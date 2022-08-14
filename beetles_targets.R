@@ -1,0 +1,99 @@
+## 02_process.R
+##  Process the raw data into the target variable product
+
+#renv::restore()
+Sys.setenv("NEONSTORE_HOME" = "/home/rstudio/data/neonstore")
+#Sys.setenv("NEONSTORE_DB" = "/home/rstudio/data/neonstore")
+#Sys.setenv("NEONSTORE_DB")
+
+library(neonstore)
+library(tidyverse)
+library(ISOweek)
+source("R/resolve_taxonomy.R")
+
+print(neon_dir())
+
+#message("Downloading: DP1.10022.001")
+#neonstore::neon_download(product="DP1.10022.001", 
+#                         type = "expanded", 
+#                         start_date = NA,
+#                         .token = Sys.getenv("NEON_TOKEN"))
+#neon_store(product = "DP1.10022.001")
+
+
+## Load data from raw files
+sorting <- neon_table("bet_sorting-expanded")
+para <- neon_table("bet_parataxonomistID-expanded")
+expert <- neon_table("bet_expertTaxonomistIDProcessed-expanded")
+field <- neon_table("bet_fielddata-expanded")
+
+
+#### Generate derived richness table  ####################
+beetles <- resolve_taxonomy(sorting, para, expert) %>%
+  mutate(iso_week = ISOweek::ISOweek(collectDate),
+         time = ISOweek::ISOweek2date(paste0(iso_week, "-1"))) %>%
+  as_tibble()
+
+richness <- beetles %>%
+  select(taxonID, siteID, collectDate, time) %>%
+  distinct() %>%
+  count(siteID, time) %>%
+  rename(richness = n)  %>%
+  ungroup()
+
+
+
+#### Generate derived abundance table ####################
+
+## Using 'field' instead of 'beetles' Does not reflect taxonomic corrections!
+## Allows for some counts even when richness is NA
+
+effort <- field %>%
+  mutate(iso_week = ISOweek::ISOweek(collectDate),
+         time = ISOweek::ISOweek2date(paste0(iso_week, "-1"))) %>%
+  group_by(siteID, time) %>%
+  summarise(trapnights = as.integer(sum(collectDate - setDate)),
+            .groups = "drop")
+
+counts <- beetles %>%
+  mutate(iso_week = ISOweek::ISOweek(collectDate),
+         time = ISOweek::ISOweek2date(paste0(iso_week, "-1"))) %>%
+  group_by(siteID, time) %>%
+  summarise(count = sum(as.numeric(individualCount), na.rm = TRUE),
+            .groups = "drop")
+
+abund <- counts %>%
+  left_join(effort) %>%
+  arrange(time) %>%
+  mutate(abundance = count / trapnights) %>%
+  select(siteID, time, abundance) %>%
+  ungroup()
+
+targets_na <- full_join(abund, richness)
+
+## site-dates that have sampling effort but no counts should be
+## treated as explicit observed 0s
+
+## FIXME some may have effort but no sorting due only to latency, should not be treated as zeros
+
+targets <- effort %>%
+  select(siteID, time) %>%
+  left_join(targets_na) %>%
+  tidyr::replace_na(list(richness = 0L, abundance = 0)) |> 
+  pivot_longer(-c("time","siteID"), names_to = "variable", values_to = "observed") |> 
+  rename(site_id = siteID) |> 
+  mutate(iso_week = ISOweek::ISOweek(time)) |> 
+  select(time, site_id, variable, observed, iso_week)
+
+##  Write out the targets
+write_csv(targets, "beetles-targets.csv.gz")
+
+aws.s3::put_object(file = "beetles-targets.csv.gz", 
+                   object = "beetles/beetles-targets.csv.gz",
+                   bucket = "neon4cast-targets")
+
+
+unlink("beetles-targets.csv.gz")
+
+
+
