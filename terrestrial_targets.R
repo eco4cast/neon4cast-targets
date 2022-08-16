@@ -17,8 +17,6 @@ library(tidyverse)
 library(lubridate)
 library(contentid)
 
-sites <- read_csv("https://raw.githubusercontent.com/eco4cast/neon4cast-terrestrial/master/Terrestrial_NEON_Field_Site_Metadata_20210928.csv")
-
 sites <- readr::read_csv("NEON_Field_Site_Metadata_20220412.csv") |> 
   dplyr::filter(terrestrial == 1)
 
