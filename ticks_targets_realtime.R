@@ -29,28 +29,22 @@ library(uuid) # for unique IDs
 library(MMWRweek) # for converting from date to MMWR week
 
 # select target species and life stage
-target.species <- "Amblyomma americanum" # NEON species name
+target.species <- c("Amblyomma americanum", "Ixodes scapularis") # NEON species name
 target.lifestage <- "Nymph"
 
-sites.df <- read_csv("Ticks_NEON_Field_Site_Metadata_20210928.csv")
+sites <- read_csv("https://raw.githubusercontent.com/eco4cast/neon4cast-targets/main/NEON_Field_Site_Metadata_20220412.csv") |> 
+  dplyr::filter(ticks == 1)
 target.sites <- sites.df %>% pull(field_site_id)
 
-if(!"neonstore" %in% installed.packages()){
-  library(remotes)
-  remotes::install_github("cboettig/neonstore", ref = "patch/api-updates")
-}
-
 library(neonstore)
-
-efi_server <- TRUE
 
 # get data from neon
 #product <- "DP1.10093.001"
 #neon_download(product = product,
 #              site = target.sites)
 
-tick.field.raw <- neon_read("tck_fielddata-basic", keep_filename = TRUE)
-tick.taxon.raw <- neon_read("tck_taxonomyProcessed-basic")
+tick.field.raw <- neon_table("tck_fielddata-basic", keep_filename = TRUE)
+tick.taxon.raw <- neon_table("tck_taxonomyProcessed-basic")
 
 # there are lots of reasons why sampling didn't occur (logistics, too wet, too cold, etc.)
 # so, keep records when sampling occurred
@@ -113,12 +107,12 @@ tick.standard <- tick.long %>%
          year = year(date),
          iso_week = ISOweek::ISOweek(collectDate),
          time = ISOweek::ISOweek2date(paste0(iso_week, "-1"))) %>% 
-  select(time, processedCount, totalSampledArea, siteID) %>%
+  select(time, processedCount, totalSampledArea, siteID, scientificName) %>%
   mutate(totalSampledArea = as.numeric(totalSampledArea)) %>% 
-  group_by(siteID, time) %>%
+  group_by(siteID, time, scientificName) %>%
   summarise(totalCount = sum(processedCount), # all counts in a week
             totalArea = sum(totalSampledArea),# total area surveyed in a week
-            amblyomma_americanum = totalCount / totalArea * 1600) %>% # scale to the size of a plot
+            observed = totalCount / totalArea * 1600) %>% # scale to the size of a plot
   mutate(iso_week = ISOweek::ISOweek(time)) %>% 
   arrange(siteID, time) %>% 
   filter() %>% 
@@ -127,9 +121,8 @@ tick.standard <- tick.long %>%
 
 tick.targets <- tick.standard %>% 
   #filter(time < challenge.time) |> 
-  rename(site_id = siteID,
-         observed = amblyomma_americanum) |> 
-  mutate(variable = "amblyomma_americanum") |> 
+  rename(site_id = siteID
+  mutate(variable = scientificName) |> 
   select(time, site_id, variable, observed, iso_week)
   
 
