@@ -185,14 +185,23 @@ wq_cleaned <- wq_full %>%
                                                          observed, ifelse(observed >= chla_min & observed <= chla_max & variable == 'chla', observed, NA)))) %>%
   # manual cleaning based on visual inspection
   dplyr::mutate(observed = ifelse(site_id == "MAYF" & 
-                                       between(time, ymd("2019-01-20"), ymd("2019-02-05")) &
-                                       variable == "oxygen", NA, observed),
+                                    between(time, ymd("2019-01-20"), ymd("2019-02-05")) &
+                                    variable == "oxygen", NA, observed),
                 observed = ifelse(site_id == "WLOU" &
-                                       !between(observed, 7.5, 11) & 
-                                       variable == "oxygen", NA, observed),
+                                    !between(observed, 7.5, 11) & 
+                                    variable == "oxygen", NA, observed),
                 observed = ifelse(site_id == "BARC" & 
-                                       observed < 4 &
-                                       variable == "oxygen", NA, observed))
+                                    observed < 4 &
+                                    variable == "oxygen", NA, observed),
+                observed = ifelse(site_id == "BLDE" &
+                                    between(time, ymd("2020-07-01"), ymd("2020-12-31")) & 
+                                    variable == "oxygen", NA, observed),
+                observed = ifelse(site_id == "BIGC" &
+                                    between(time, ymd("2021-10-25"), ymd("2021-10-27")) & 
+                                    variable == "oxygen", NA, observed),
+                observed = ifelse(site_id == "REDB" &
+                                    time == ymd("2022-04-28") & 
+                                    variable == "oxygen", NA, observed)) 
 
 #===============================================#
 message("#### Generate hourly temperature profiles for lake #############")
