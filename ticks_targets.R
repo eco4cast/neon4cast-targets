@@ -29,30 +29,22 @@ library(uuid) # for unique IDs
 library(MMWRweek) # for converting from date to MMWR week
 
 # select target species and life stage
-target.species <- "Amblyomma americanum" # NEON species name
+target.species <- c("Amblyomma americanum") # NEON species name
 target.lifestage <- "Nymph"
 
-sites.df <- readr::read_csv("NEON_Field_Site_Metadata_20220412.csv") |> 
+sites.df <- read_csv("https://raw.githubusercontent.com/eco4cast/neon4cast-targets/main/NEON_Field_Site_Metadata_20220412.csv") |> 
   dplyr::filter(ticks == 1)
-
 target.sites <- sites.df %>% pull(field_site_id)
 
-if(!"neonstore" %in% installed.packages()){
-  library(remotes)
-  remotes::install_github("cboettig/neonstore", ref = "patch/api-updates")
-}
-
 library(neonstore)
-
-efi_server <- TRUE
 
 # get data from neon
 #product <- "DP1.10093.001"
 #neon_download(product = product,
 #              site = target.sites)
 
-tick.field.raw <- neon_read("tck_fielddata-basic", keep_filename = TRUE)
-tick.taxon.raw <- neon_read("tck_taxonomyProcessed-basic")
+tick.field.raw <- neon_table("tck_fielddata-basic")
+tick.taxon.raw <- neon_table("tck_taxonomyProcessed-basic")
 
 # there are lots of reasons why sampling didn't occur (logistics, too wet, too cold, etc.)
 # so, keep records when sampling occurred
@@ -108,38 +100,36 @@ tick.long <- left_join(tick.long, taxon.ids, by = "acceptedTaxonID")
 tick.standard <- tick.long %>% 
   filter(siteID %in% target.sites, # sites we want
          lifeStage == target.lifestage, # life stage we want
-         scientificName == target.species, # species we want
+         scientificName %in% target.species,
+         #scientificName %in% target.species, # species we want
          grepl("Forest", nlcdClass)) %>%  # forest plots
   mutate(date = floor_date(collectDate, unit = "day"),
          date = ymd(date),
          year = year(date),
-         mmwrWeek = MMWRweek(date)$MMWRweek,
-         time = MMWRweek2Date(year, mmwrWeek)) %>% 
-  select(time, processedCount, totalSampledArea, siteID) %>%
+         iso_week = ISOweek::ISOweek(collectDate),
+         time = ISOweek::ISOweek2date(paste0(iso_week, "-1"))) %>% 
+  select(time, processedCount, totalSampledArea, siteID, scientificName) %>%
   mutate(totalSampledArea = as.numeric(totalSampledArea)) %>% 
-  group_by(siteID, time) %>%
+  group_by(siteID, time, scientificName) %>%
   summarise(totalCount = sum(processedCount), # all counts in a week
             totalArea = sum(totalSampledArea),# total area surveyed in a week
-            amblyomma_americanum = totalCount / totalArea * 1600) %>% # scale to the size of a plot
-  mutate(mmwr_week = MMWRweek(time)$MMWRweek) %>% 
+            observed = totalCount / totalArea * 1600) %>% # scale to the size of a plot
+  mutate(iso_week = ISOweek::ISOweek(time)) %>% 
   arrange(siteID, time) %>% 
-  filter() %>% 
-  select(time, mmwr_week, siteID, amblyomma_americanum)
+  select(time, iso_week, siteID, scientificName, observed)
 
-# in case NEON makes a provisional data release during the challenge
-# need to make sure that we filter out 2021 data that is in the "future"
-run.date <- today()
-year(run.date) <- year(run.date) - 1
-run.mmwrWeek <- MMWRweek(run.date)$MMWRweek
-challenge.time <- MMWRweek2Date(year(run.date), run.mmwrWeek)
 
 tick.targets <- tick.standard %>% 
-  filter(time < challenge.time) |> 
-  rename(site_id = siteID,
-         observed = amblyomma_americanum) |> 
-  mutate(variable = "amblyomma_americanum") |> 
-  select(time, site_id, variable, observed, mmwr_week)
-  
+  #filter(time < challenge.time) |> 
+  rename(site_id = siteID) |> 
+  mutate(variable = scientificName) |> 
+  mutate(variable = ifelse(variable == "Amblyomma americanum", "amblyomma_americanum", "ixodes_scapularis")) |> 
+  select(time, site_id, variable, observed, iso_week)
+
+ggplot(tick.targets, aes(x = time, y = observed, color = variable)) +
+  geom_line() +
+  facet_wrap(~site_id, scale = "free")
+
 
 # write targets to csv
 write_csv(tick.targets,
