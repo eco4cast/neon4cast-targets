@@ -1,3 +1,4 @@
+renv::restore()
 ## 02_process.R
 ##  Process the raw data into the target variable product
 

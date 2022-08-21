@@ -1,3 +1,4 @@
+renv::restore()
 # Download and clean tick data 
 Sys.setenv("NEONSTORE_HOME" = "/home/rstudio/data/neonstore")
 #Sys.setenv("NEONSTORE_DB" = "/home/rstudio/data/neonstore")

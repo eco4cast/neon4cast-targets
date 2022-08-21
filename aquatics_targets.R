@@ -1,3 +1,5 @@
+renv::restore()
+
 message(paste0("Running Creating Aquatics Targets at ", Sys.time()))
 
 avro_file_directory <- "/home/rstudio/data/aquatic_avro"

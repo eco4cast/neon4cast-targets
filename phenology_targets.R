@@ -1,4 +1,4 @@
-#remotes::install_deps()
+renv::restore()
 
 library(tidyverse)
 

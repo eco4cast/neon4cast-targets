@@ -1,3 +1,4 @@
+renv::restore()
 print(paste0("Running Creating Terrestrial Targets at ", Sys.time()))
 
 Sys.setenv("NEONSTORE_HOME" = "/home/rstudio/data/neonstore")
