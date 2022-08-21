@@ -396,7 +396,7 @@ tsd_vars <- c('siteName',
               'tsdWaterTempFinalQF')
 
 columns_keep <- c('siteName', 'termName', 'startDate', 'Value', 'verticalIndex')
-thermistor_depths <- readr::read_csv('https://raw.githubusercontent.com/eco4cast/neon4cast-aquatics/master/thermistorDepths.csv', col_types = 'ccd')
+thermistor_depths <- readr::read_csv('thermistorDepths.csv', col_types = 'ccd')
 
 
 # Generate a list of files to be read
