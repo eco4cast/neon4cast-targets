@@ -27,7 +27,6 @@ library(stringr) # for searching within character strings
 library(here) # for working within subdirectories
 library(parallel) # for using more than one core in download
 library(uuid) # for unique IDs
-library(MMWRweek) # for converting from date to MMWR week
 
 # select target species and life stage
 target.species <- c("Amblyomma americanum") # NEON species name

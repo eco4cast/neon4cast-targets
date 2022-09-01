@@ -10,9 +10,9 @@ QC.temp <- function(df, range, spike, by.depth = T) {
       mutate(temp_change = observed - dplyr::lag(observed), 
              
              flagged_abs_val = ifelse(between(observed, min(range), max(range)), F, T),
-             flagged_spike = ifelse(abs(temp_change) > spike,
+             flagged_spike = ifelse(abs(temp_change) > spike & time != first(time),
                                     T, F),
-             flagged_flat = ifelse(temp_change == 0,
+             flagged_flat = ifelse(temp_change == 0  & time != first(time),
                                    T, F),
              final_flag = ifelse(flagged_spike != F | 
                                    flagged_abs_val != F |
@@ -28,9 +28,9 @@ QC.temp <- function(df, range, spike, by.depth = T) {
       mutate(temp_change = observed - dplyr::lag(observed), 
              
              flagged_abs_val = ifelse(between(observed, min(range), max(range)), F, T),
-             flagged_spike = ifelse(abs(temp_change) > spike,
+             flagged_spike = ifelse(abs(temp_change) > spike & time != first(time),
                                     T, F),
-             flagged_flat = ifelse(temp_change == 0,
+             flagged_flat = ifelse(temp_change == 0 & time != first(time),
                                    T, F),
              final_flag = ifelse((flagged_spike == T | 
                                    flagged_abs_val == T |

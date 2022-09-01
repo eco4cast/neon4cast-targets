@@ -52,7 +52,7 @@ delete.neon.avro <- function(months, sites, path, data_product) {
 }
 
 # requires wq_vars - specify
-read.avro.wq <- function(sc, name = 'name', path) {
+read.avro.wq <- function(sc, name = 'name', path, columns_keep) {
   message(paste0('reading file ', path))
   wq_avro <- sparkavro::spark_read_avro(sc, 
                                         name = "name",
@@ -193,7 +193,7 @@ read.avro.tsd <- function(sc, name = 'name', path, thermistor_depths) {
 }
 
 
-read.avro.tsd.profile <- function(sc, name = 'name', path, thermistor_depths) {
+read.avro.tsd.profile <- function(sc, name = 'name', path, thermistor_depths, columns_keep) {
   message(paste0('reading file ', path))
 
     tsd_avro <- sparkavro::spark_read_avro(sc, 
@@ -267,7 +267,7 @@ read.avro.tsd.profile <- function(sc, name = 'name', path, thermistor_depths) {
 }
 
 
-read.avro.prt <- function(sc, name = 'name', path) {
+read.avro.prt <- function(sc, name = 'name', path, columns_keep) {
   message(paste0('reading file ', path))
   prt_avro <- sparkavro::spark_read_avro(sc, name = 'name', 
                                          path = path) |> 
@@ -303,7 +303,7 @@ read.avro.prt <- function(sc, name = 'name', path) {
         summarize(temperature = mean(surfWaterTempMean, na.rm = TRUE),
                   .groups = "drop") %>%
         rename(site_id = siteName) %>%
-        rename(observation = temperature) |> 
+        rename(observed = temperature) |> 
         mutate(variable = "temperature")
       
     } 
@@ -329,7 +329,7 @@ read.avro.prt <- function(sc, name = 'name', path) {
 
 # wrapper function for a generic read avro function that selects the right 
   # read_avro_... depending on the data product
-read.neon.avro <- function(path, sc, data_product, ...) {
+read.neon.avro <- function(path, sc, data_product, columns_keep, ...) {
   # the function is only available for 3 data products (wq, tsd, and prt)
   if (data_product != '20288' |
       data_product != '20264' |
@@ -345,13 +345,13 @@ read.neon.avro <- function(path, sc, data_product, ...) {
   # use the right function based on the data product specified
   if (data_product == '20288') {
     message('running read.avro for water quality')
-    df <- read.avro.wq(path = path, sc = sc)
+    df <- read.avro.wq(path = path, sc = sc, columns_keep = columns_keep)
   } else if (data_product == '20264') {
     message('running read.avro for temperature at specific depth')
-    df <- read.avro.tsd(path = path, sc = sc, thermistor_depths = thermistor_depths)
+    df <- read.avro.tsd(path = path, sc = sc, thermistor_depths = thermistor_depths, columns_keep = columns_keep)
   } else if (data_product == '20053') {
     message('running read.avro for surface temperature')
-    df <- read.avro.prt(path = path, sc = sc)
+    df <- read.avro.prt(path = path, sc = sc, columns_keep = columns_keep)
   }
   return(df)
 } 

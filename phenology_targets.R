@@ -60,6 +60,9 @@ for(i in 1:nrow(sites)){
 
 allData2 <- left_join(combined, allData, by = c("time", "site_id", "variable"))
 
+allData2 <- allData2 |> 
+  select("time", "site_id", "variable", "observed")
+
 readr::write_csv(allData2, "phenology-targets.csv.gz")
 
 aws.s3::put_object(file = "phenology-targets.csv.gz", 
