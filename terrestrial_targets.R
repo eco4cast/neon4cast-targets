@@ -48,6 +48,7 @@ flux_data <- neon_table(table = "nsae-basic", site = site_names) %>%
   mutate(timeBgn = as_datetime(timeBgn),
          timeEnd = as_datetime(timeEnd))
 
+
 #Get the current unpublished flux data (5-day latency)
 
 if(use_5day_data){
@@ -73,12 +74,23 @@ if(use_5day_data){
   
   fn_parquet <- list.files(file.path(non_store_dir,"current_month_parquet"))
   
+  #Checking for files that have been updated
+  d <- tibble(file_full = fn_parquet,
+              file = tools::file_path_sans_ext(tools::file_path_sans_ext(tools::file_path_sans_ext(fn_parquet))),
+              date = lubridate::as_datetime(stringr::str_split(fn_parquet, "\\.", 12, simplify = TRUE)[, 10])) |> 
+    arrange(file, date) |> 
+    group_by(file) |> 
+    mutate(max_date = max(date),
+           delete = ifelse(date != max(date), 1, 0)) |> 
+    ungroup()
+  unlink(file.path(non_store_dir,"current_month_parquet", d$file_full[which(d$delete == 1)]))
+    
   #remove files that are no longer in the unpublished s3 bucket because they are now in NEON portal
   
   for(i in 1:length(fn_parquet)){
     if(!(paste0(tools::file_path_sans_ext(basename(fn_parquet[i])),".gz") %in% files$file_name)){
       message(paste0("removing: ", basename(fn_parquet[i])))
-      unlink(fn_parquet[i])
+      unlink(file.path(non_store_dir,"current_month_parquet",fn_parquet[i]))
     }
   }
   
@@ -110,6 +122,7 @@ if(use_5day_data){
   
   flux_data <- bind_rows(flux_data, flux_data_curr)
 }
+
 
 flux_data |> 
   group_by(siteID) |> 
@@ -268,5 +281,4 @@ aws.s3::put_object(file = "terrestrial_daily-targets.csv.gz",
 unlink("terrestrial_30min-targets.csv.gz")
 unlink("terrestrial_daily-targets.csv.gz")
 
-aws.s3::delete_object(object = "aquatics/terrestrial_30min-targets.csv.gz", bucket = "neon4cast-targets")
 
