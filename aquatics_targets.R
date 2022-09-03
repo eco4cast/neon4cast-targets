@@ -72,34 +72,39 @@ neon <- arrow::s3_bucket("neon4cast-targets/neon",
 message("#### Generate WQ table #############")
 
 # list tables with `neon$ls()`
-wq_portal <- arrow::open_dataset(neon$path("waq_instantaneous-basic-DP1.20288.001"), partitioning = "siteID") %>%   # waq_instantaneous
-#wq_portal <- neonstore::neon_table("waq_instantaneous", site = sites$field_site_id, lazy = TRUE) %>%   # waq_instantaneous
-  dplyr::filter(siteID %in% sites$field_site_id) %>%
-  dplyr::select(siteID, startDateTime, sensorDepth,
-                dissolvedOxygen,dissolvedOxygenExpUncert,dissolvedOxygenFinalQF, 
-                chlorophyll, chlorophyllExpUncert,chlorophyllFinalQF) %>%
-  dplyr::mutate(sensorDepth = as.numeric(sensorDepth),
-                dissolvedOxygen = as.numeric(dissolvedOxygen),
-                dissolvedOxygenExpUncert = as.numeric(dissolvedOxygenExpUncert),
-                chla = as.numeric(chlorophyll),
-                chlorophyllExpUncert = as.numeric(chlorophyllExpUncert)) %>%
-  dplyr::rename(site_id = siteID) %>% 
-  dplyr::filter(((sensorDepth > 0 & sensorDepth < 1)| is.na(sensorDepth))) |> 
-  collect() %>% # sensor depth of NA == surface?
-  dplyr::mutate(startDateTime = as_datetime(startDateTime)) %>%
-  dplyr::mutate(time = as_date(startDateTime)) %>%
-  # QF (quality flag) == 0, is a pass (1 == fail), 
-  # make NA so these values are not used in the mean summary
-  dplyr::mutate(dissolvedOxygen = ifelse(dissolvedOxygenFinalQF == 0, dissolvedOxygen, NA),
-                chla = ifelse(chlorophyllFinalQF == 0, chla, NA)) %>% 
-  dplyr::group_by(site_id, time) %>%
-  dplyr::summarize(oxygen = mean(dissolvedOxygen, na.rm = TRUE),
-                   chla = mean(chla, na.rm = TRUE),.groups = "drop") %>%
-  dplyr::select(time, site_id, 
-                oxygen, chla) %>% 
-  pivot_longer(cols = -c("time", "site_id"), names_to = "variable", values_to = "observed") %>%
-  dplyr::filter(!(variable == "chla" & site_id %in% stream_sites))
-  
+
+wq_portal <- purrr::map_dfr(sites$field_site_id, function(site){
+  message(site)
+  arrow::open_dataset(neon$path("waq_instantaneous-basic-DP1.20288.001"), partitioning = "siteID") %>%   # waq_instantaneous
+    #wq_portal <- neonstore::neon_table("waq_instantaneous", site = sites$field_site_id, lazy = TRUE) %>%   # waq_instantaneous
+    dplyr::filter(siteID %in% site) %>%
+    dplyr::select(siteID, startDateTime, sensorDepth,
+                  dissolvedOxygen,dissolvedOxygenExpUncert,dissolvedOxygenFinalQF, 
+                  chlorophyll, chlorophyllExpUncert,chlorophyllFinalQF) %>%
+    dplyr::mutate(sensorDepth = as.numeric(sensorDepth),
+                  dissolvedOxygen = as.numeric(dissolvedOxygen),
+                  dissolvedOxygenExpUncert = as.numeric(dissolvedOxygenExpUncert),
+                  chla = as.numeric(chlorophyll),
+                  chlorophyllExpUncert = as.numeric(chlorophyllExpUncert)) %>%
+    dplyr::rename(site_id = siteID) %>% 
+    dplyr::filter(((sensorDepth > 0 & sensorDepth < 1)| is.na(sensorDepth))) |> 
+    collect() %>% # sensor depth of NA == surface?
+    dplyr::mutate(startDateTime = as_datetime(startDateTime)) %>%
+    dplyr::mutate(time = as_date(startDateTime)) %>%
+    # QF (quality flag) == 0, is a pass (1 == fail), 
+    # make NA so these values are not used in the mean summary
+    dplyr::mutate(dissolvedOxygen = ifelse(dissolvedOxygenFinalQF == 0, dissolvedOxygen, NA),
+                  chla = ifelse(chlorophyllFinalQF == 0, chla, NA)) %>% 
+    dplyr::group_by(site_id, time) %>%
+    dplyr::summarize(oxygen = mean(dissolvedOxygen, na.rm = TRUE),
+                     chla = mean(chla, na.rm = TRUE),.groups = "drop") %>%
+    dplyr::select(time, site_id, 
+                  oxygen, chla) %>% 
+    pivot_longer(cols = -c("time", "site_id"), names_to = "variable", values_to = "observed") %>%
+    dplyr::filter(!(variable == "chla" & site_id %in% stream_sites))
+}
+)
+
 #====================================================#
 ##### low latency WQ data =======
 message("# download the 24/48hr provisional data from the Google Cloud")
@@ -117,7 +122,7 @@ new_month_wq <- unique(format(c((as.Date(max(wq_portal$time)) %m+% months(1)), (
 # Start by deleting superseded files
 # Files that have been supersed by the NEON store files can be deleted from the relevent repository
 # Look in each repository to see if there are files that match the current maximum month of the NEON
-      # store data
+# store data
 
 delete.neon.avro(months = cur_wq_month,
                  sites = unique(sites$field_site_id), 
@@ -183,8 +188,8 @@ chla_min <- 0
 
 wq_cleaned <- wq_full %>%
   dplyr::mutate(observed = ifelse(is.na(observed),
-                                     observed, ifelse(observed >= DO_min & observed <= DO_max & variable == 'oxygen', 
-                                                         observed, ifelse(observed >= chla_min & observed <= chla_max & variable == 'chla', observed, NA)))) %>%
+                                  observed, ifelse(observed >= DO_min & observed <= DO_max & variable == 'oxygen', 
+                                                   observed, ifelse(observed >= chla_min & observed <= chla_max & variable == 'chla', observed, NA)))) %>%
   # manual cleaning based on visual inspection
   dplyr::mutate(observed = ifelse(site_id == "MAYF" & 
                                     between(time, ymd("2019-01-20"), ymd("2019-02-05")) &
@@ -209,7 +214,7 @@ wq_cleaned <- wq_full %>%
 message("#### Generate hourly temperature profiles for lake #############")
 message("##### NEON portal data #####")
 hourly_temp_profile_portal <- arrow::open_dataset(neon$path("TSD_30_min-basic-DP1.20264.001"), partitioning = "siteID") %>%
-#hourly_temp_profile_portal <- neonstore::neon_table("TSD_30_min", site = sites$field_site_id) %>%
+  #hourly_temp_profile_portal <- neonstore::neon_table("TSD_30_min", site = sites$field_site_id) %>%
   dplyr::filter(siteID %in% lake_sites) %>%
   rename(site_id = siteID,
          depth = thermistorDepth) %>%
@@ -218,83 +223,83 @@ hourly_temp_profile_portal <- arrow::open_dataset(neon$path("TSD_30_min-basic-DP
   # errors in the sensor depths reported - see "https://www.neonscience.org/impact/observatory-blog/incorrect-depths-associated-lake-and-river-temperature-profiles"
   # sensor depths are manually assigned based on "vertical position" variable as per table on webpage
   dplyr::mutate(depth = ifelse(site_id == "CRAM" & 
-                                           lubridate::as_date(startDateTime) < lubridate::as_date("2020-11-01") & 
-                                           verticalPosition == 502, 1.75, depth),
+                                 lubridate::as_date(startDateTime) < lubridate::as_date("2020-11-01") & 
+                                 verticalPosition == 502, 1.75, depth),
                 depth = ifelse(site_id == "CRAM" & 
-                                           lubridate::as_date(startDateTime) < lubridate::as_date("2020-11-01") & 
-                                           verticalPosition == 503, 3.45, depth),
+                                 lubridate::as_date(startDateTime) < lubridate::as_date("2020-11-01") & 
+                                 verticalPosition == 503, 3.45, depth),
                 depth = ifelse(site_id == "CRAM" & 
-                                           lubridate::as_date(startDateTime) < lubridate::as_date("2020-11-01") & 
-                                           verticalPosition == 504, 5.15, depth),
+                                 lubridate::as_date(startDateTime) < lubridate::as_date("2020-11-01") & 
+                                 verticalPosition == 504, 5.15, depth),
                 depth = ifelse(site_id == "CRAM" & 
-                                           lubridate::as_date(startDateTime) < lubridate::as_date("2020-11-01") & 
-                                           verticalPosition == 505, 6.85, depth),
+                                 lubridate::as_date(startDateTime) < lubridate::as_date("2020-11-01") & 
+                                 verticalPosition == 505, 6.85, depth),
                 depth = ifelse(site_id == "CRAM" & 
-                                           lubridate::as_date(startDateTime) < lubridate::as_date("2020-11-01") & 
-                                           verticalPosition == 506, 8.55, depth),
+                                 lubridate::as_date(startDateTime) < lubridate::as_date("2020-11-01") & 
+                                 verticalPosition == 506, 8.55, depth),
                 depth = ifelse(site_id == "CRAM" & 
-                                           lubridate::as_date(startDateTime) < lubridate::as_date("2020-11-01") & 
-                                           verticalPosition == 505, 10.25, depth),
+                                 lubridate::as_date(startDateTime) < lubridate::as_date("2020-11-01") & 
+                                 verticalPosition == 505, 10.25, depth),
                 depth = ifelse(site_id == "BARC" & 
-                                           (lubridate::as_date(startDateTime) < lubridate::as_date("2021-06-08") | 
-                                              lubridate::as_date(startDateTime) > lubridate::as_date("2022-01-07") )& 
-                                           verticalPosition == 502, 0.55, depth),
+                                 (lubridate::as_date(startDateTime) < lubridate::as_date("2021-06-08") | 
+                                    lubridate::as_date(startDateTime) > lubridate::as_date("2022-01-07") )& 
+                                 verticalPosition == 502, 0.55, depth),
                 depth = ifelse(site_id == "BARC" & 
-                                           (lubridate::as_date(startDateTime) < lubridate::as_date("2021-06-08") | 
-                                              lubridate::as_date(startDateTime) > lubridate::as_date("2022-01-07") )& 
-                                           verticalPosition == 503, 1.05, depth),
+                                 (lubridate::as_date(startDateTime) < lubridate::as_date("2021-06-08") | 
+                                    lubridate::as_date(startDateTime) > lubridate::as_date("2022-01-07") )& 
+                                 verticalPosition == 503, 1.05, depth),
                 depth = ifelse(site_id == "BARC" & 
-                                           (lubridate::as_date(startDateTime) < lubridate::as_date("2021-06-08") | 
-                                              lubridate::as_date(startDateTime) > lubridate::as_date("2022-01-07") )& 
-                                           verticalPosition == 504, 1.55, depth),
+                                 (lubridate::as_date(startDateTime) < lubridate::as_date("2021-06-08") | 
+                                    lubridate::as_date(startDateTime) > lubridate::as_date("2022-01-07") )& 
+                                 verticalPosition == 504, 1.55, depth),
                 depth = ifelse(site_id == "BARC" & 
-                                           (lubridate::as_date(startDateTime) < lubridate::as_date("2021-06-08") | 
-                                              lubridate::as_date(startDateTime) > lubridate::as_date("2022-01-07") )& 
-                                           verticalPosition == 505, 2.05, depth),
+                                 (lubridate::as_date(startDateTime) < lubridate::as_date("2021-06-08") | 
+                                    lubridate::as_date(startDateTime) > lubridate::as_date("2022-01-07") )& 
+                                 verticalPosition == 505, 2.05, depth),
                 depth = ifelse(site_id == "BARC" & 
-                                           (lubridate::as_date(startDateTime) < lubridate::as_date("2021-06-08") | 
-                                              lubridate::as_date(startDateTime) > lubridate::as_date("2022-01-07") )& 
-                                           verticalPosition == 506, 2.55, depth),
+                                 (lubridate::as_date(startDateTime) < lubridate::as_date("2021-06-08") | 
+                                    lubridate::as_date(startDateTime) > lubridate::as_date("2022-01-07") )& 
+                                 verticalPosition == 506, 2.55, depth),
                 depth = ifelse(site_id == "BARC" & 
-                                           (lubridate::as_date(startDateTime) < lubridate::as_date("2021-06-08") | 
-                                              lubridate::as_date(startDateTime) > lubridate::as_date("2022-01-07") )& 
-                                           verticalPosition == 507, 3.05, depth),
+                                 (lubridate::as_date(startDateTime) < lubridate::as_date("2021-06-08") | 
+                                    lubridate::as_date(startDateTime) > lubridate::as_date("2022-01-07") )& 
+                                 verticalPosition == 507, 3.05, depth),
                 depth = ifelse(site_id == "BARC" & 
-                                           (lubridate::as_date(startDateTime) >= lubridate::as_date("2021-06-08") & 
-                                              lubridate::as_date(startDateTime) <= lubridate::as_date("2022-01-07") )& 
-                                           verticalPosition == 502, 0.3, depth),
+                                 (lubridate::as_date(startDateTime) >= lubridate::as_date("2021-06-08") & 
+                                    lubridate::as_date(startDateTime) <= lubridate::as_date("2022-01-07") )& 
+                                 verticalPosition == 502, 0.3, depth),
                 depth = ifelse(site_id == "BARC" & 
-                                           (lubridate::as_date(startDateTime) >= lubridate::as_date("2021-06-08") & 
-                                              lubridate::as_date(startDateTime) <= lubridate::as_date("2022-01-07") )& 
-                                           verticalPosition == 503, 0.55, depth),
+                                 (lubridate::as_date(startDateTime) >= lubridate::as_date("2021-06-08") & 
+                                    lubridate::as_date(startDateTime) <= lubridate::as_date("2022-01-07") )& 
+                                 verticalPosition == 503, 0.55, depth),
                 depth = ifelse(site_id == "BARC" & 
-                                           (lubridate::as_date(startDateTime) >= lubridate::as_date("2021-06-08") & 
-                                              lubridate::as_date(startDateTime) <= lubridate::as_date("2022-01-07") )& 
-                                           verticalPosition == 504, 0.8, depth),
+                                 (lubridate::as_date(startDateTime) >= lubridate::as_date("2021-06-08") & 
+                                    lubridate::as_date(startDateTime) <= lubridate::as_date("2022-01-07") )& 
+                                 verticalPosition == 504, 0.8, depth),
                 depth = ifelse(site_id == "BARC" & 
-                                           (lubridate::as_date(startDateTime) >= lubridate::as_date("2021-06-08") & 
-                                              lubridate::as_date(startDateTime) <= lubridate::as_date("2022-01-07") )& 
-                                           verticalPosition == 505, 1.05, depth),
+                                 (lubridate::as_date(startDateTime) >= lubridate::as_date("2021-06-08") & 
+                                    lubridate::as_date(startDateTime) <= lubridate::as_date("2022-01-07") )& 
+                                 verticalPosition == 505, 1.05, depth),
                 depth = ifelse(site_id == "BARC" & 
-                                           (lubridate::as_date(startDateTime) >= lubridate::as_date("2021-06-08") & 
-                                              lubridate::as_date(startDateTime) <= lubridate::as_date("2022-01-07") )& 
-                                           verticalPosition == 506, 1.3, depth),
+                                 (lubridate::as_date(startDateTime) >= lubridate::as_date("2021-06-08") & 
+                                    lubridate::as_date(startDateTime) <= lubridate::as_date("2022-01-07") )& 
+                                 verticalPosition == 506, 1.3, depth),
                 depth = ifelse(site_id == "BARC" & 
-                                           (lubridate::as_date(startDateTime) >= lubridate::as_date("2021-06-08") & 
-                                              lubridate::as_date(startDateTime) <= lubridate::as_date("2022-01-07") )& 
-                                           verticalPosition == 507, 1.55, depth),
+                                 (lubridate::as_date(startDateTime) >= lubridate::as_date("2021-06-08") & 
+                                    lubridate::as_date(startDateTime) <= lubridate::as_date("2022-01-07") )& 
+                                 verticalPosition == 507, 1.55, depth),
                 depth = ifelse(site_id == "BARC" & 
-                                           (lubridate::as_date(startDateTime) >= lubridate::as_date("2021-06-08") & 
-                                              lubridate::as_date(startDateTime) <= lubridate::as_date("2022-01-07") )& 
-                                           verticalPosition == 508, 2.05, depth),
+                                 (lubridate::as_date(startDateTime) >= lubridate::as_date("2021-06-08") & 
+                                    lubridate::as_date(startDateTime) <= lubridate::as_date("2022-01-07") )& 
+                                 verticalPosition == 508, 2.05, depth),
                 depth = ifelse(site_id == "BARC" & 
-                                           (lubridate::as_date(startDateTime) >= lubridate::as_date("2021-06-08") & 
-                                              lubridate::as_date(startDateTime) <= lubridate::as_date("2022-01-07") )& 
-                                           verticalPosition == 509, 2.55, depth),
+                                 (lubridate::as_date(startDateTime) >= lubridate::as_date("2021-06-08") & 
+                                    lubridate::as_date(startDateTime) <= lubridate::as_date("2022-01-07") )& 
+                                 verticalPosition == 509, 2.55, depth),
                 depth = ifelse(site_id == "BARC" & 
-                                           (lubridate::as_date(startDateTime) >= lubridate::as_date("2021-06-08") | 
-                                              lubridate::as_date(startDateTime) <= lubridate::as_date("2022-01-07") )& 
-                                           verticalPosition == 510, 3.05, depth)) %>%
+                                 (lubridate::as_date(startDateTime) >= lubridate::as_date("2021-06-08") | 
+                                    lubridate::as_date(startDateTime) <= lubridate::as_date("2022-01-07") )& 
+                                 verticalPosition == 510, 3.05, depth)) %>%
   dplyr::filter((tsdWaterTempFinalQF == 0 | (tsdWaterTempFinalQF == 1 & as_date(startDateTime) > as_date("2020-07-01")))) %>% 
   dplyr::mutate(time = ymd_h(format(startDateTime, "%y-%m-%d %H")),
                 depth = round(depth, 1)) %>% # round to the nearest 0.1 m
@@ -307,7 +312,7 @@ hourly_temp_profile_portal <- arrow::open_dataset(neon$path("TSD_30_min-basic-DP
   mutate(data_source = 'NEON_portal')
 
 message("##### Sonde EDI data #####")
-  # Only 6 lake sites available on EDI
+# Only 6 lake sites available on EDI
 edi_url_lake <- c("https://pasta.lternet.edu/package/data/eml/edi/1071/1/7f8aef451231d5388c98eef889332a4b",
                   "https://pasta.lternet.edu/package/data/eml/edi/1071/1/2c8893684d94b9a52394060a76cab798", 
                   "https://pasta.lternet.edu/package/data/eml/edi/1071/1/770e2ab9d957991a787a2f990d5a2fad",
@@ -340,11 +345,11 @@ for(i in 1:length(edi_url_lake)){
 edi_data <- list.files(file.path(EDI_file_directory), full.names = T)
 # Get the lake sites subset
 edi_lake_files <- c(edi_data[grepl(x = edi_data, pattern= lake_sites[1])],
-                     edi_data[grepl(x = edi_data, pattern= lake_sites[2])],
-                     edi_data[grepl(x = edi_data, pattern= lake_sites[3])],
-                     edi_data[grepl(x = edi_data, pattern= lake_sites[4])],
-                     edi_data[grepl(x = edi_data, pattern= lake_sites[5])],
-                     edi_data[grepl(x = edi_data, pattern= lake_sites[6])])
+                    edi_data[grepl(x = edi_data, pattern= lake_sites[2])],
+                    edi_data[grepl(x = edi_data, pattern= lake_sites[3])],
+                    edi_data[grepl(x = edi_data, pattern= lake_sites[4])],
+                    edi_data[grepl(x = edi_data, pattern= lake_sites[5])],
+                    edi_data[grepl(x = edi_data, pattern= lake_sites[6])])
 
 # Calculate the hourly average profile 
 hourly_temp_profile_EDI <- purrr::map_dfr(.x = edi_lake_files, ~ read.csv(file = .x)) %>%
@@ -445,10 +450,10 @@ daily_temp_surface_lakes <- hourly_temp_profile_lakes %>%
   group_by(site_id, time) %>%
   summarise(observed = mean(observed, na.rm = T),.groups = "drop") %>%
   mutate(variable = 'temperature')     
- 
+
 message("##### Stream temperatures #####")
 temp_streams_portal <- arrow::open_dataset(neon$path("TSW_30min-basic-DP1.20053.001"), partitioning = "siteID") %>% 
-#temp_streams_portal <- neonstore::neon_table("TSW_30min", site = sites$field_site_id) %>%
+  #temp_streams_portal <- neonstore::neon_table("TSW_30min", site = sites$field_site_id) %>%
   dplyr::filter(horizontalPosition == "101" | horizontalPosition == "111", # take upstream to match WQ data
                 finalQF == 0) %>%  
   dplyr::select(startDateTime, siteID, surfWaterTempMean, surfWaterTempExpUncert, finalQF) %>%
@@ -467,7 +472,7 @@ temp_streams_portal_QC <- temp_streams_portal %>%
   QC.temp(range = c(-5, 40), spike = 7, by.depth = F)
 #===========================================#
 message("##### Stream temperatures2 #####") 
-    #### avros
+#### avros
 
 # need to figure out which month's data are required
 # what is in the NEON store db?
@@ -517,15 +522,15 @@ temp_streams_avros <- purrr::map_dfr(.x = prt_avro_files, ~ read.avro.prt(sc= sc
   QC.temp(range = c(-5, 40), spike = 7, by.depth = F)
 spark_disconnect(sc)
 
-  
+
 #===============================================#
 
 message("##### River temperature ######")
 # For non-wadeable rivers need portal, EDI and avro data
-  
-  # Portal data
+
+# Portal data
 temp_rivers_portal <- arrow::open_dataset(neon$path("TSD_30_min-basic-DP1.20264.001"), partitioning = "siteID") %>%
-#temp_rivers_portal <- neonstore::neon_table("TSD_30_min", site = sites$field_site_id) %>%
+  #temp_rivers_portal <- neonstore::neon_table("TSD_30_min", site = sites$field_site_id) %>%
   dplyr::filter(siteID %in% nonwadable_rivers) %>%
   rename(site_id = siteID,
          depth = thermistorDepth) %>%
@@ -544,7 +549,7 @@ temp_rivers_portal <- temp_rivers_portal %>%
 temp_rivers_portal_QC <- temp_rivers_portal %>%
   QC.temp(range = c(-5, 40), spike = 7, by.depth = F)
 
-   # EDI data
+# EDI data
 edi_url_river <- c("https://pasta.lternet.edu/package/data/eml/edi/1185/1/fb9cf9ba62ee8e8cf94cb020175e9165",
                    "https://pasta.lternet.edu/package/data/eml/edi/1185/1/fac068cff680ae28473c3e13dc75aa9f",
                    "https://pasta.lternet.edu/package/data/eml/edi/1185/1/5567ad7252b598ee40f5653e7b732ff4" )
@@ -583,7 +588,7 @@ temp_rivers_EDI <- purrr::map_dfr(.x = edi_rivers, ~ read.csv(file = .x)) %>%
   mutate(variable = "temperature")
 
 
-  # avros
+# avros
 
 message("Generate a list of nonwadable_rivers avro files to be read")
 tsd_avro_files <- paste0(avro_file_directory, '/',
@@ -597,9 +602,9 @@ river_avro_files <- c(tsd_avro_files[grepl(x = tsd_avro_files, pattern= nonwadab
 sc <- sparklyr::spark_connect(master = "local")
 # Read in each of the files and then bind by rows
 temp_rivers_avros <- purrr::map_dfr(.x = river_avro_files,
-                                           ~ read.avro.tsd(sc= sc,
-                                                           path = .x,
-                                                           thermistor_depths = thermistor_depths)) %>% 
+                                    ~ read.avro.tsd(sc= sc,
+                                                    path = .x,
+                                                    thermistor_depths = thermistor_depths)) %>% 
   # include first QC of data
   QC.temp(range = c(-5, 40), spike = 5, by.depth = F)
 spark_disconnect(sc)
@@ -609,16 +614,16 @@ message("#### surface temperatures ####")
 
 # Combine the avro files with the portal data
 temp_full <- dplyr::bind_rows(# Lakes surface temperature
-                              daily_temp_surface_lakes,
-                              
-                              # Stream temperature data
-                              temp_streams_portal_QC,
-                              temp_streams_avros,
-                              
-                              # River temperature data
-                              temp_rivers_portal_QC,
-                              temp_rivers_EDI,
-                              temp_rivers_avros) %>%
+  daily_temp_surface_lakes,
+  
+  # Stream temperature data
+  temp_streams_portal_QC,
+  temp_streams_avros,
+  
+  # River temperature data
+  temp_rivers_portal_QC,
+  temp_rivers_EDI,
+  temp_rivers_avros) %>%
   dplyr::arrange(site_id, time) %>%
   group_by(site_id, time) %>%
   summarise(observed = mean(observed, na.rm = T),.groups = "drop") %>%
@@ -636,11 +641,11 @@ T_min <- -2 # gross min
 # GR flag will be true if the temperature is outside the range specified 
 temp_cleaned <-  temp_full %>%
   dplyr::mutate(observed =ifelse(observed >= T_min & observed <= T_max , 
-                                    observed, NA))  %>%
+                                 observed, NA))  %>%
   # manual cleaning based on observed
   dplyr:: mutate(observed = ifelse(site_id == "PRLA" & time <ymd("2019-01-01"),
-                                      NA, observed))
- 
+                                   NA, observed))
+
 #### Targets==========================
 targets_long <- dplyr::bind_rows(wq_cleaned, temp_cleaned) %>%
   dplyr::arrange(site_id, time, variable) %>%
