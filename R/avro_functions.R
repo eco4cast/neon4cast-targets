@@ -40,19 +40,33 @@ download.neon.avro <- function(months, sites, data_product, path) {
  
 
 # delete the superseded files
+delete.neon.parquet <- function(months, sites, path, data_product) {
+  for (i in 1:length(sites)) {
+    path <- dir(path = path, pattern = sites[i])
+    superseded <-  dir(path = path,
+                       pattern = months)
+    
+    if (length(superseded) != 0) {
+      file.remove(paste0(path, '/',superseded))
+    }
+  }
+}
+
+# delete the superseded files
 delete.neon.avro <- function(months, sites, path, data_product) {
   for (i in 1:length(sites)) {
     superseded <-  dir(path = paste0(path, '/site=', sites[i]),
                        pattern = months) %>% .[matches(data_product, vars=.)]
-    
     if (length(superseded) != 0) {
       file.remove(paste0(path,'/site=', sites[i], '/',superseded))
     }
   }
 }
 
+
+
 # requires wq_vars - specify
-read.avro.wq <- function(sc, name = 'name', path, columns_keep) {
+read.avro.wq <- function(sc, name = 'name', path, columns_keep, dir ) {
   message(paste0('reading file ', path))
   wq_avro <- sparkavro::spark_read_avro(sc, 
                                         name = "name",
@@ -104,8 +118,15 @@ read.avro.wq <- function(sc, name = 'name', path, columns_keep) {
     }
   }
   
+  fs::dir_create(dir)
+  
+  file_name <- file.path(file.path(dir, paste0(basename(path), ".parquet")))
+  
   if (exists('daily_wq')) {
-    return(daily_wq)
+    arrow::write_parquet(x = daily_wq, sink = file_name)
+    if(fs::file_exists(file_name)){
+    fs::file_delete(path)
+    }
   } else {
       # create an empty df to return
       empty <- data.frame(site_id = NA, 
@@ -117,11 +138,14 @@ read.avro.wq <- function(sc, name = 'name', path, columns_keep) {
                variable = as.character(variable),
                observed = as.numeric(observed)) %>%
         dplyr::filter(rowSums(is.na(.)) != ncol(.)) # remove the empty row
-      return(empty)
+      arrow::write_parquet(x = empty, sink = file_name)
+      if(fs::file_exists(file_name)){
+        fs::file_delete(path)
+      }
   }
 }
 
-read.avro.tsd <- function(sc, name = 'name', path, thermistor_depths) {
+read.avro.tsd <- function(sc, name = 'name', path, thermistor_depths, dir, delete) {
   message(paste0('reading file ', path))
   tsd_avro <- sparkavro::spark_read_avro(sc, 
                                          name = "name",
@@ -175,8 +199,16 @@ read.avro.tsd <- function(sc, name = 'name', path, thermistor_depths) {
     } 
   }
   
+  fs::dir_create(dir)
+  file_name <- file.path(file.path(dir, paste0(basename(path), ".parquet")))
+  
   if (exists('daily_tsd')) {
-    return(daily_tsd)
+    daily_tsd <- daily_tsd |> QC.temp(range = c(-5, 40), spike = 5, by.depth = F)
+    
+    arrow::write_parquet(x = daily_tsd, sink = file_name)
+    if(fs::file_exists(file_name) & delete_files){
+      fs::file_delete(path)
+    }
   } else {
     # create an empty df to return
     empty <- data.frame(site_id = NA,
@@ -188,12 +220,14 @@ read.avro.tsd <- function(sc, name = 'name', path, thermistor_depths) {
              variable = as.character(variable),
              observed = as.numeric(observed)) %>%
       dplyr::filter(rowSums(is.na(.)) != ncol(.)) # remove the empty row
-    return(empty)
+    if(fs::file_exists(file_name) & delete_files){
+      fs::file_delete(path)
+    }
   }
 }
 
 
-read.avro.tsd.profile <- function(sc, name = 'name', path, thermistor_depths, columns_keep) {
+read.avro.tsd.profile <- function(sc, name = 'name', path, thermistor_depths, columns_keep, dir, delete_files) {
   message(paste0('reading file ', path))
 
     tsd_avro <- sparkavro::spark_read_avro(sc, 
@@ -247,8 +281,19 @@ read.avro.tsd.profile <- function(sc, name = 'name', path, thermistor_depths, co
     } 
   }
   
+  fs::dir_create(dir)
+  file_name <- file.path(file.path(dir, paste0(basename(path), ".parquet")))
+  
+  
   if (exists('hourly_tsd')) {
-    return(hourly_tsd)
+    hourly_tsd <- hourly_tsd |> 
+      QC.temp(range = c(-5, 40), spike = 5, by.depth = T) |> 
+      mutate(data_source = 'NEON_pre-portal')
+    
+    arrow::write_parquet(x = hourly_tsd, sink = file_name)
+    if(fs::file_exists(file_name) & delete_files){
+      fs::file_delete(path)
+    }
   } else {
     # create an empty df to return
     empty <- data.frame(site_id = NA,
@@ -262,12 +307,15 @@ read.avro.tsd.profile <- function(sc, name = 'name', path, thermistor_depths, co
              variable = as.character(variable),
              observed = as.numeric(observed)) %>%
       dplyr::filter(rowSums(is.na(.)) != ncol(.)) # remove the empty row
-    return(empty)
+    arrow::write_parquet(x = empty, sink = file_name)
+    if(fs::file_exists(file_name) & delete_files){
+      fs::file_delete(path)
+    }
   }
 }
 
 
-read.avro.prt <- function(sc, name = 'name', path, columns_keep) {
+read.avro.prt <- function(sc, name = 'name', path, columns_keep, dir) {
   message(paste0('reading file ', path))
   prt_avro <- sparkavro::spark_read_avro(sc, name = 'name', 
                                          path = path) |> 
@@ -309,8 +357,18 @@ read.avro.prt <- function(sc, name = 'name', path, columns_keep) {
     } 
   }
   
+  fs::dir_create(dir)
+  file_name <- file.path(file.path(dir, paste0(basename(path), ".parquet")))
+  
+  
   if (exists('daily_prt')) {
-    return(daily_prt)
+    
+    daily_prt <- daily_prt |> QC.temp(range = c(-5, 40), spike = 5, by.depth = F)
+    
+    arrow::write_parquet(x = hourly_tsd, sink = file_name)
+    if(fs::file_exists(file_name)){
+      #fs::file_delete(path)
+    }
   } else {
     # create an empty df to return
     empty <- data.frame(site_id = NA, 
@@ -322,7 +380,10 @@ read.avro.prt <- function(sc, name = 'name', path, columns_keep) {
              variable = as.character(variable),
              observed = as.numeric(observed)) %>%
       dplyr::filter(rowSums(is.na(.)) != ncol(.)) # remove the empty row
-    return(empty)
+    arrow::write_parquet(x = empty, sink = file_name)
+    if(fs::file_exists(file_name)){
+      #fs::file_delete(path)
+    }
   }
 }
 

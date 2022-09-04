@@ -3,6 +3,7 @@
 message(paste0("Running Creating Aquatics Targets at ", Sys.time()))
 
 avro_file_directory <- "/home/rstudio/data/aquatic_avro"
+parquet_file_directory <- "/home/rstudio/data/aquatic_parquet"
 EDI_file_directory <- "/home/rstudio/data/aquatic_EDI"
 
 readRenviron("~/.Renviron") # compatible with littler
@@ -124,11 +125,15 @@ new_month_wq <- unique(format(c((as.Date(max(wq_portal$time)) %m+% months(1)), (
 # Look in each repository to see if there are files that match the current maximum month of the NEON
 # store data
 
+delete.neon.parquet(months = cur_wq_month,
+                    sites = unique(sites$field_site_id), 
+                    path = file.path(parquet_file_directory, "wq"),
+                    data_product = '20288')
+
 delete.neon.avro(months = cur_wq_month,
                  sites = unique(sites$field_site_id), 
                  path = avro_file_directory,
                  data_product = '20288')
-
 
 # Download any new files from the Google Cloud
 download.neon.avro(months = new_month_wq, 
@@ -159,10 +164,30 @@ wq_avro_files <- paste0(avro_file_directory, '/',
                                    pattern = '*20288', 
                                    recursive = T))
 
-sc <- sparklyr::spark_connect(master = "local")
-# Read in each of the files and then bind by rows
-wq_avro_df <- purrr::map_dfr(.x = wq_avro_files, ~ read.avro.wq(sc= sc, path = .x, columns_keep = columns_keep))
-spark_disconnect(sc)
+wq_parquet_files <- list.files(path = file.path(parquet_file_directory, "wq"))
+
+new_files <- map_lgl(wq_avro_files, function(x){
+  new_file <- TRUE
+  if(basename(x) %in% tools::file_path_sans_ext(wq_parquet_files)){
+    new_file <- FALSE
+  }
+  return(new_file)
+})
+
+wq_avro_files <- wq_avro_files[which(new_files)]
+
+if(length(wq_avro_files) > 0){
+  sc <- sparklyr::spark_connect(master = "local")
+  # Read in each of the files and then bind by rows
+  purrr::walk(.x = wq_avro_files, ~ read.avro.wq(sc= sc, path = .x, columns_keep = columns_keep, dir = file.path(parquet_file_directory, "wq")))
+  spark_disconnect(sc)
+}
+
+
+s3 <- arrow::SubTreeFileSystem$create(file.path(parquet_file_directory, "wq"))
+
+wq_avro_df <- arrow::open_dataset(s3) |> 
+  collect()
 
 
 # Combine the avro files with the portal data
@@ -380,11 +405,15 @@ new_month_tsd <- unique(format(c((as.Date(max(hourly_temp_profile_portal$time)) 
 # Look in each repository to see if there are files that match the current maximum month of the NEON
 # store data
 
+delete.neon.parquet(months = cur_tsd_month,
+                    sites = unique(sites$field_site_id), 
+                    path = file.path(parquet_file_directory, "tsd"),
+                    data_product = '20264')
+
 delete.neon.avro(months = cur_tsd_month,
                  sites = unique(sites$field_site_id), 
                  path = avro_file_directory,
                  data_product = '20264')
-
 
 # Download any new files from the Google Cloud
 download.neon.avro(months = new_month_tsd, 
@@ -419,17 +448,35 @@ lake_avro_files <- c(tsd_avro_files[grepl(x = tsd_avro_files, pattern= lake_site
                      tsd_avro_files[grepl(x = tsd_avro_files, pattern= lake_sites[6])],
                      tsd_avro_files[grepl(x = tsd_avro_files, pattern= lake_sites[7])])
 
-sc <- sparklyr::spark_connect(master = "local")
-message("# Read in each of the files and then bind by rows")
-hourly_temp_profile_avro <- purrr::map_dfr(.x = lake_avro_files,
-                                           ~ read.avro.tsd.profile(sc= sc,
-                                                                   path = .x,
-                                                                   thermistor_depths = thermistor_depths,
-                                                                   columns_keep = columns_keep)) %>% 
-  # include first QC of data
-  QC.temp(range = c(-5, 40), spike = 5, by.depth = T)  %>%
-  mutate(data_source = 'NEON_pre-portal')
-spark_disconnect(sc)
+wq_parquet_files <- list.files(path = file.path(parquet_file_directory, "tsd"))
+
+new_files <- map_lgl(lake_avro_files, function(x){
+  new_file <- TRUE
+  if(basename(x) %in% tools::file_path_sans_ext(wq_parquet_files)){
+    new_file <- FALSE
+  }
+  return(new_file)
+})
+
+lake_avro_files <- lake_avro_files[which(new_files)]
+
+if(length(lake_avro_files) > 0){
+  sc <- sparklyr::spark_connect(master = "local")
+  message("# Read in each of the files and then bind by rows")
+  hourly_temp_profile_avro <- purrr::walk(.x = lake_avro_files,
+                                          ~ read.avro.tsd.profile(sc= sc,
+                                                                  path = .x,
+                                                                  thermistor_depths = thermistor_depths,
+                                                                  columns_keep = columns_keep,
+                                                                  dir = file.path(parquet_file_directory, "tsd"),
+                                                                  delete = FALSE))
+  spark_disconnect(sc)
+}
+
+s3 <- arrow::SubTreeFileSystem$create(file.path(parquet_file_directory, "tsd"))
+
+hourly_temp_profile_avro <- arrow::open_dataset(s3) |> 
+  collect()
 
 # Combine the three data sources
 hourly_temp_profile_lakes <- bind_rows(hourly_temp_profile_portal, hourly_temp_profile_EDI, hourly_temp_profile_avro) %>%
@@ -485,11 +532,15 @@ new_month_prt <- unique(format(c((as.Date(max(temp_streams_portal_QC$time)) %m+%
 # Look in each repository to see if there are files that match the current maximum month of the NEON
 # store data
 
+delete.neon.parquet(months = cur_prt_month,
+                    sites = unique(sites$field_site_id), 
+                    path = file.path(parquet_file_directory, "prt"),
+                    data_product = '20053')
+
 delete.neon.avro(months = cur_prt_month,
                  sites = unique(sites$field_site_id), 
                  path = avro_file_directory,
                  data_product = '20053')
-
 
 # Download any new files from the Google Cloud
 download.neon.avro(months = new_month_prt, 
@@ -516,11 +567,35 @@ prt_avro_files <- paste0(avro_file_directory, '/',
                          list.files(path = avro_file_directory,
                                     pattern = '*20053', 
                                     recursive = T))
-sc <- sparklyr::spark_connect(master = "local")
-# Read in each of the files and then bind by rows
-temp_streams_avros <- purrr::map_dfr(.x = prt_avro_files, ~ read.avro.prt(sc= sc, path = .x, columns_keep = columns_keep)) %>%
-  QC.temp(range = c(-5, 40), spike = 7, by.depth = F)
-spark_disconnect(sc)
+
+wq_parquet_files <- list.files(path = file.path(parquet_file_directory, "prt"))
+
+new_files <- map_lgl(prt_avro_files, function(x){
+  new_file <- TRUE
+  if(basename(x) %in% tools::file_path_sans_ext(wq_parquet_files)){
+    new_file <- FALSE
+  }
+  return(new_file)
+})
+
+prt_avro_files <- prt_avro_files[which(new_files)]
+
+
+if(length(prt_avro_files > 0)){
+  sc <- sparklyr::spark_connect(master = "local")
+  # Read in each of the files and then bind by rows
+  purrr::walk(.x = prt_avro_files, ~ read.avro.prt(sc= sc, 
+                                                   path = .x, 
+                                                   columns_keep = columns_keep, 
+                                                   dir = file.path(parquet_file_directory, "prt")))
+  spark_disconnect(sc)
+}
+
+s3 <- arrow::SubTreeFileSystem$create(file.path(parquet_file_directory, "prt"))
+
+temp_streams_avros <- arrow::open_dataset(s3) |> 
+  collect()
+
 
 
 #===============================================#
@@ -599,15 +674,35 @@ river_avro_files <- c(tsd_avro_files[grepl(x = tsd_avro_files, pattern= nonwadab
                       tsd_avro_files[grepl(x = tsd_avro_files, pattern= nonwadable_rivers[2])],
                       tsd_avro_files[grepl(x = tsd_avro_files, pattern= nonwadable_rivers[3])])
 
-sc <- sparklyr::spark_connect(master = "local")
-# Read in each of the files and then bind by rows
-temp_rivers_avros <- purrr::map_dfr(.x = river_avro_files,
-                                    ~ read.avro.tsd(sc= sc,
-                                                    path = .x,
-                                                    thermistor_depths = thermistor_depths)) %>% 
-  # include first QC of data
-  QC.temp(range = c(-5, 40), spike = 5, by.depth = F)
-spark_disconnect(sc)
+wq_parquet_files <- list.files(path = file.path(parquet_file_directory, "river_tsd"))
+
+new_files <- map_lgl(river_avro_files, function(x){
+  new_file <- TRUE
+  if(basename(x) %in% tools::file_path_sans_ext(wq_parquet_files)){
+    new_file <- FALSE
+  }
+  return(new_file)
+})
+
+river_avro_files <- river_avro_files[which(new_files)]
+
+
+if(length(river_avro_files) > 0){
+  sc <- sparklyr::spark_connect(master = "local")
+  # Read in each of the files and then bind by rows
+  purrr::walk(.x = river_avro_files,  ~ read.avro.tsd(sc= sc,
+                                                      path = .x,
+                                                      thermistor_depths = thermistor_depths, 
+                                                      dir = file.path(parquet_file_directory, "river_tsd"),
+                                                      delete = FALSE))
+  spark_disconnect(sc)
+}
+
+s3 <- arrow::SubTreeFileSystem$create(file.path(parquet_file_directory, "river_tsd"))
+
+temp_rivers_avros <- arrow::open_dataset(s3) |> 
+  collect()
+
 #===========================================#
 
 message("#### surface temperatures ####")
