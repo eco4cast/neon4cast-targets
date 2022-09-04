@@ -469,7 +469,7 @@ if(length(lake_avro_files) > 0){
                                                                   thermistor_depths = thermistor_depths,
                                                                   columns_keep = columns_keep,
                                                                   dir = file.path(parquet_file_directory, "tsd"),
-                                                                  delete = FALSE))
+                                                                  delete_files = FALSE))
   spark_disconnect(sc)
 }
 
@@ -596,8 +596,6 @@ s3 <- arrow::SubTreeFileSystem$create(file.path(parquet_file_directory, "prt"))
 temp_streams_avros <- arrow::open_dataset(s3) |> 
   collect()
 
-
-
 #===============================================#
 
 message("##### River temperature ######")
@@ -694,7 +692,7 @@ if(length(river_avro_files) > 0){
                                                       path = .x,
                                                       thermistor_depths = thermistor_depths, 
                                                       dir = file.path(parquet_file_directory, "river_tsd"),
-                                                      delete = FALSE))
+                                                      delete_files = FALSE))
   spark_disconnect(sc)
 }
 

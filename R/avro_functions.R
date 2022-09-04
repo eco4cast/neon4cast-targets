@@ -145,7 +145,7 @@ read.avro.wq <- function(sc, name = 'name', path, columns_keep, dir ) {
   }
 }
 
-read.avro.tsd <- function(sc, name = 'name', path, thermistor_depths, dir, delete) {
+read.avro.tsd <- function(sc, name = 'name', path, thermistor_depths, dir, delete_files) {
   message(paste0('reading file ', path))
   tsd_avro <- sparkavro::spark_read_avro(sc, 
                                          name = "name",
@@ -365,7 +365,7 @@ read.avro.prt <- function(sc, name = 'name', path, columns_keep, dir) {
     
     daily_prt <- daily_prt |> QC.temp(range = c(-5, 40), spike = 5, by.depth = F)
     
-    arrow::write_parquet(x = hourly_tsd, sink = file_name)
+    arrow::write_parquet(x = daily_prt, sink = file_name)
     if(fs::file_exists(file_name)){
       #fs::file_delete(path)
     }
