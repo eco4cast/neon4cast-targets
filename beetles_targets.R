@@ -86,6 +86,9 @@ targets <- effort %>%
   mutate(iso_week = ISOweek::ISOweek(time)) |> 
   select(time, site_id, variable, observed, iso_week)
 
+targets <- targets |> 
+  rename(datetime = time)
+
 ##  Write out the targets
 write_csv(targets, "beetles-targets.csv.gz")
 

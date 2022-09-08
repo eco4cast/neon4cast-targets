@@ -745,12 +745,19 @@ targets_long <- dplyr::bind_rows(wq_cleaned, temp_cleaned) %>%
   dplyr::mutate(observed = ifelse(is.nan(observed), NA, observed))
 
 message("#### Writing forecasts to file ####")
+
+targets_long <- targets_long |> 
+  rename(datetime = time)
+
 ### Write out the targets
 write_csv(targets_long, "aquatics-targets.csv.gz")
 
 #ggplot(targets_long, aes(x = time, y = observed)) +
 #  geom_point() +
 #  facet_grid(variable~site_id, scale = "free")
+
+hourly_temp_profile_lakes <- hourly_temp_profile_lakes |> 
+  rename(datetime = time)
 
 ### Write the disaggregated lake data
 write_csv(hourly_temp_profile_lakes, "aquatics-expanded-observations.csv.gz")

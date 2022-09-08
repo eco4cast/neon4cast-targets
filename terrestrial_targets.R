@@ -260,10 +260,12 @@ flux_target_daily %>%
 # flux_target_30m <- left_join(flux_target_30m, site_uncertainty, by = c("site_id", "variable"))
 
 flux_target_30m <- flux_target_30m |> 
-  select(time, site_id, variable, observed)
+  select(time, site_id, variable, observed) |> 
+  rename(datetime = time)
 
 flux_target_daily <- flux_target_daily |> 
-  select(time, site_id, variable, observed)
+  select(time, site_id, variable, observed) |> 
+  rename(datetime = time)
 
 write_csv(flux_target_30m, "terrestrial_30min-targets.csv.gz")
 write_csv(flux_target_daily, "terrestrial_daily-targets.csv.gz")

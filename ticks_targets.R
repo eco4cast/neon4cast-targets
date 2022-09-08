@@ -130,6 +130,8 @@ ggplot(tick.targets, aes(x = time, y = observed, color = variable)) +
   geom_line() +
   facet_wrap(~site_id, scale = "free")
 
+tick.targets <- tick.targets |> 
+  rename(datetime = time)
 
 # write targets to csv
 write_csv(tick.targets,
