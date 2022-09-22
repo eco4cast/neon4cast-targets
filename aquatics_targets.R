@@ -116,13 +116,17 @@ fs::dir_create(avro_file_directory) # ignores existing directories unlike dir.cr
 
 # need to figure out which month's data are required
 # what is in the NEON store db?
-cur_wq_month <- format(as.Date(max(wq_portal$time)), "%Y-%m")
-# what is the next month from this plus the current month? These might be the same
-new_month_wq <- unique(format(c((as.Date(max(wq_portal$time)) %m+% months(1)), (Sys.Date() - days(2))), "%Y-%m"))
+cur_wq_month <- wq_portal %>%
+  group_by(site_id) %>%
+  summarise(cur_wq_month = as.Date(max(time))) %>%
+  mutate(new_date = cur_wq_month + days(1))
+# # what is the next month from this plus the current month? These might be the same
+# new_month_wq <- unique(format(c((as.Date(max(wq_portal$time)) %m+% months(1)), 
+#                                 (Sys.Date() - days(2))), "%Y-%m"))
 
 # Start by deleting superseded files
-# Files that have been supersed by the NEON store files can be deleted from the relevent repository
-# Look in each repository to see if there are files that match the current maximum month of the NEON
+# Files that have been superseded by the NEON store files can be deleted from the relavent repository
+# Look in each repository to see if there are files that exceed the current maximum date of the NEON
 # store data
 
 delete.neon.parquet(months = cur_wq_month,
@@ -136,7 +140,7 @@ delete.neon.avro(months = cur_wq_month,
                  data_product = '20288')
 
 # Download any new files from the Google Cloud
-download.neon.avro(months = new_month_wq, 
+download.neon.avro(months = cur_wq_month, 
                    sites = unique(sites$field_site_id), 
                    data_product = '20288',  # WQ data product
                    path = avro_file_directory)
@@ -394,11 +398,14 @@ hourly_temp_profile_EDI <- purrr::map_dfr(.x = edi_lake_files, ~ read.csv(file =
 message("##### avros data #####")
 message("# Download any new files from the Google Cloud")
 
-# need to figure out which month's data are required
+# need to figure out which data are required
 # what is in the NEON store db?
-cur_tsd_month <- format(as.Date(max(hourly_temp_profile_portal$time)), "%Y-%m")
-# what is the next month from this plus the current month? These might be the same
-new_month_tsd <- unique(format(c((as.Date(max(hourly_temp_profile_portal$time)) %m+% months(1)), (Sys.Date() - days(2))), "%Y-%m"))
+cur_tsd_month <- hourly_temp_profile_portal %>%
+  group_by(site_id) %>%
+  summarise(cur_wq_month = as.Date(max(time))) %>%
+  mutate(new_date = cur_wq_month + days(1))
+# what is the next data from this?
+# new_month_tsd <- unique(format(c((as.Date(max(hourly_temp_profile_portal$time)) %m+% months(1)), (Sys.Date() - days(2))), "%Y-%m"))
 
 # Start by deleting superseded files
 # Files that have been supersed by the NEON store files can be deleted from the relevent repository
@@ -416,7 +423,7 @@ delete.neon.avro(months = cur_tsd_month,
                  data_product = '20264')
 
 # Download any new files from the Google Cloud
-download.neon.avro(months = new_month_tsd, 
+download.neon.avro(months = cur_tsd_month, 
                    sites = unique(sites$field_site_id), 
                    data_product = '20264',  # TSD data product
                    path = avro_file_directory)
@@ -448,11 +455,11 @@ lake_avro_files <- c(tsd_avro_files[grepl(x = tsd_avro_files, pattern= lake_site
                      tsd_avro_files[grepl(x = tsd_avro_files, pattern= lake_sites[6])],
                      tsd_avro_files[grepl(x = tsd_avro_files, pattern= lake_sites[7])])
 
-wq_parquet_files <- list.files(path = file.path(parquet_file_directory, "tsd"))
+tsd_parquet_files <- list.files(path = file.path(parquet_file_directory, "tsd"))
 
 new_files <- map_lgl(lake_avro_files, function(x){
   new_file <- TRUE
-  if(basename(x) %in% tools::file_path_sans_ext(wq_parquet_files)){
+  if(basename(x) %in% tools::file_path_sans_ext(tsd_parquet_files)){
     new_file <- FALSE
   }
   return(new_file)
@@ -523,9 +530,12 @@ message("##### Stream temperatures2 #####")
 
 # need to figure out which month's data are required
 # what is in the NEON store db?
-cur_prt_month <- format(as.Date(max(temp_streams_portal_QC$time)), "%Y-%m")
+cur_prt_month <- temp_streams_portal_QC %>%
+  group_by(site_id) %>%
+  summarise(cur_wq_month = as.Date(max(time))) %>%
+  mutate(new_date = cur_wq_month + days(1))
 # what is the next month from this plus the current month? These might be the same
-new_month_prt <- unique(format(c((as.Date(max(temp_streams_portal_QC$time)) %m+% months(1)), (Sys.Date() - days(2))), "%Y-%m"))
+# new_month_prt <- unique(format(c((as.Date(max(temp_streams_portal_QC$time)) %m+% months(1)), (Sys.Date() - days(2))), "%Y-%m"))
 
 # Start by deleting superseded files
 # Files that have been supersed by the NEON store files can be deleted from the relevent repository
@@ -543,7 +553,7 @@ delete.neon.avro(months = cur_prt_month,
                  data_product = '20053')
 
 # Download any new files from the Google Cloud
-download.neon.avro(months = new_month_prt, 
+download.neon.avro(months = cur_prt_month, 
                    sites = unique(sites$field_site_id), 
                    data_product = '20053',  # PRT data product
                    path = avro_file_directory)
@@ -568,11 +578,11 @@ prt_avro_files <- paste0(avro_file_directory, '/',
                                     pattern = '*20053', 
                                     recursive = T))
 
-wq_parquet_files <- list.files(path = file.path(parquet_file_directory, "prt"))
+prt_parquet_files <- list.files(path = file.path(parquet_file_directory, "prt"))
 
 new_files <- map_lgl(prt_avro_files, function(x){
   new_file <- TRUE
-  if(basename(x) %in% tools::file_path_sans_ext(wq_parquet_files)){
+  if(basename(x) %in% tools::file_path_sans_ext(prt_parquet_files)){
     new_file <- FALSE
   }
   return(new_file)
@@ -672,11 +682,11 @@ river_avro_files <- c(tsd_avro_files[grepl(x = tsd_avro_files, pattern= nonwadab
                       tsd_avro_files[grepl(x = tsd_avro_files, pattern= nonwadable_rivers[2])],
                       tsd_avro_files[grepl(x = tsd_avro_files, pattern= nonwadable_rivers[3])])
 
-wq_parquet_files <- list.files(path = file.path(parquet_file_directory, "river_tsd"))
+tsd_parquet_files <- list.files(path = file.path(parquet_file_directory, "river_tsd"))
 
 new_files <- map_lgl(river_avro_files, function(x){
   new_file <- TRUE
-  if(basename(x) %in% tools::file_path_sans_ext(wq_parquet_files)){
+  if(basename(x) %in% tools::file_path_sans_ext(tsd_parquet_files)){
     new_file <- FALSE
   }
   return(new_file)
