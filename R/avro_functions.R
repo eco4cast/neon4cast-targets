@@ -2,7 +2,7 @@
 download.neon.avro <- function(months, sites, data_product, path) {
   for (i in 1:length(sites)) {
     # create a directory for each site (if one doesn't already exist)
-    if (paste0('site=', sites[i]) %in% list.dirs(path, full.names = F)) {
+    if (paste0('site=', months$site_id[i]) %in% list.dirs(path, full.names = F)) {
       # message('directory exists')
     } else {
       dir.create(path = paste0(path, '/site=', sites[i]), recursive = TRUE, showWarnings = FALSE)
@@ -11,8 +11,10 @@ download.neon.avro <- function(months, sites, data_product, path) {
     
     message(paste0('downloading site ', i, '/', length(sites)))
     
+    month_use <- unique(format(c(months$new_date[j], Sys.Date() + days(2)), "%Y-%m"))
     # loop through each month (max 2) and each dp listed
-    for (month_use in months) {
+    for (j in 1:length(month_use)) {
+      
       for (dp in data_product) {
         # download the provisional files from Google Cloud Storage using the gsutils tool from cmd
         # -n argument skips files already downloaded
@@ -21,7 +23,7 @@ download.neon.avro <- function(months, sites, data_product, path) {
                       '.001/ms=',
                       # -n excludes already downloaded files
                       # -m cp runs the copy function in parallel to speed up download
-                      month_use,
+                      month_use[i],
                       '/site=',
                       sites[i],
                       "/* ",
@@ -41,21 +43,35 @@ download.neon.avro <- function(months, sites, data_product, path) {
 
 # delete the superseded files
 delete.neon.parquet <- function(months, sites, path, data_product) {
-  superseded <-  dir(path = path,
-                     pattern = months)
+  
+  for (i in 1:nrow(months)) {
+    site_parquet <- dir(path = path,
+                       pattern = months$site_id[i])
+    
+    superseded <- site_parquet[which(lubridate::as_date(str_match(site_parquet, 
+                                                    "__\\s*(.*?)\\s*.avro")[,2]) <= 
+                         months$cur_wq_month[i])]
     
     if (length(superseded) != 0) {
       file.remove(paste0(path, '/',superseded))
     }
+  }
 }
 
 # delete the superseded files
 delete.neon.avro <- function(months, sites, path, data_product) {
-  for (i in 1:length(sites)) {
-    superseded <-  dir(path = paste0(path, '/site=', sites[i]),
-                       pattern = months) %>% .[matches(data_product, vars=.)]
+  
+  for (i in 1:nrow(months)) {
+    
+    site_avro <- dir(path = paste0(path, '/site=', months$site_id[i]),
+                     pattern = data_product) 
+    
+    superseded <- site_avro[which(lubridate::as_date(str_match(site_avro, 
+                                                               "__\\s*(.*?)\\s*.avro")[,2]) <= 
+                                    months$cur_wq_month[i])] 
+    
     if (length(superseded) != 0) {
-      file.remove(paste0(path,'/site=', sites[i], '/',superseded))
+      file.remove(paste0(path,'/site=', months$site_id[i], '/',superseded))
     }
   }
 }
