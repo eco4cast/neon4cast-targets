@@ -41,15 +41,12 @@ download.neon.avro <- function(months, sites, data_product, path) {
 
 # delete the superseded files
 delete.neon.parquet <- function(months, sites, path, data_product) {
-  for (i in 1:length(sites)) {
-    path <- dir(path = path, pattern = sites[i])
-    superseded <-  dir(path = path,
-                       pattern = months)
+  superseded <-  dir(path = path,
+                     pattern = months)
     
     if (length(superseded) != 0) {
       file.remove(paste0(path, '/',superseded))
     }
-  }
 }
 
 # delete the superseded files
