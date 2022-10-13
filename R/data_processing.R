@@ -7,9 +7,9 @@ QC.temp <- function(df, range, spike, by.depth = T) {
     df_QC <- df %>%
       arrange(site_id, time) %>%
       group_by(site_id) %>%
-      mutate(temp_change = observed - dplyr::lag(observed), 
+      mutate(temp_change = observation - dplyr::lag(observation), 
              
-             flagged_abs_val = ifelse(between(observed, min(range), max(range)), F, T),
+             flagged_abs_val = ifelse(between(observation, min(range), max(range)), F, T),
              flagged_spike = ifelse(abs(temp_change) > spike & time != first(time),
                                     T, F),
              flagged_flat = ifelse(temp_change == 0  & time != first(time),
@@ -18,16 +18,16 @@ QC.temp <- function(df, range, spike, by.depth = T) {
                                    flagged_abs_val != F |
                                    flagged_flat != F,
                                  T, F),
-             observed = ifelse(final_flag == T, 
-                                  NA, observed)) %>%
+             observation = ifelse(final_flag == T, 
+                                  NA, observation)) %>%
       select(-c(contains('flag'), temp_change))
   } else {
     df_QC <- df %>%
       arrange(site_id, time) %>%
       group_by(site_id, depth) %>%
-      mutate(temp_change = observed - dplyr::lag(observed), 
+      mutate(temp_change = observation - dplyr::lag(observation), 
              
-             flagged_abs_val = ifelse(between(observed, min(range), max(range)), F, T),
+             flagged_abs_val = ifelse(between(observation, min(range), max(range)), F, T),
              flagged_spike = ifelse(abs(temp_change) > spike & time != first(time),
                                     T, F),
              flagged_flat = ifelse(temp_change == 0 & time != first(time),
@@ -36,8 +36,8 @@ QC.temp <- function(df, range, spike, by.depth = T) {
                                    flagged_abs_val == T |
                                    flagged_flat == T),
                                  T, F),
-             observed = ifelse((final_flag == F | is.na(final_flag)), 
-                                  observed, NA)) %>%
+             observation = ifelse((final_flag == F | is.na(final_flag)), 
+                                  observation, NA)) %>%
       select(-c(contains('flag'), temp_change))
   }
   return(df_QC)
