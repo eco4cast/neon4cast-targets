@@ -113,10 +113,10 @@ tick.standard <- tick.long %>%
   group_by(siteID, time, scientificName) %>%
   summarise(totalCount = sum(processedCount), # all counts in a week
             totalArea = sum(totalSampledArea),# total area surveyed in a week
-            observed = totalCount / totalArea * 1600) %>% # scale to the size of a plot
+            observation = totalCount / totalArea * 1600) %>% # scale to the size of a plot
   mutate(iso_week = ISOweek::ISOweek(time)) %>% 
   arrange(siteID, time) %>% 
-  select(time, iso_week, siteID, scientificName, observed)
+  select(time, iso_week, siteID, scientificName, observation)
 
 
 tick.targets <- tick.standard %>% 
@@ -124,9 +124,9 @@ tick.targets <- tick.standard %>%
   rename(site_id = siteID) |> 
   mutate(variable = scientificName) |> 
   mutate(variable = ifelse(variable == "Amblyomma americanum", "amblyomma_americanum", "ixodes_scapularis")) |> 
-  select(time, site_id, variable, observed, iso_week)
+  select(time, site_id, variable, observation, iso_week)
 
-ggplot(tick.targets, aes(x = time, y = observed, color = variable)) +
+ggplot(tick.targets, aes(x = time, y = observation, color = variable)) +
   geom_line() +
   facet_wrap(~site_id, scale = "free")
 

@@ -11,7 +11,7 @@ download.neon.avro <- function(months, sites, data_product, path) {
     
     message(paste0('downloading site ', i, '/', length(sites)))
     
-    month_use <- unique(format(c(months$new_date[j], Sys.Date() + days(2)), "%Y-%m"))
+    month_use <- unique(format(c(months$new_date[i], Sys.Date() + days(2)), "%Y-%m"))
     # loop through each month (max 2) and each dp listed
     for (j in 1:length(month_use)) {
       
@@ -23,7 +23,7 @@ download.neon.avro <- function(months, sites, data_product, path) {
                       '.001/ms=',
                       # -n excludes already downloaded files
                       # -m cp runs the copy function in parallel to speed up download
-                      month_use[i],
+                      month_use[j],
                       '/site=',
                       sites[i],
                       "/* ",
@@ -121,7 +121,7 @@ read.avro.wq <- function(sc, name = 'name', path, columns_keep, dir ) {
         # get in the same long format as the NEON portal data
         pivot_longer(cols = -c("time", "site_id"), 
                      names_to = "variable", 
-                     values_to = "observed")
+                     values_to = "observation")
     } 
   }
   
@@ -145,11 +145,11 @@ read.avro.wq <- function(sc, name = 'name', path, columns_keep, dir ) {
       empty <- data.frame(site_id = NA, 
                           time = NA, 
                           variable = NA,
-                          observed = NA)  %>%
+                          observation = NA)  %>%
         mutate(site_id = as.character(site_id),
                time = as.Date(time),
                variable = as.character(variable),
-               observed = as.numeric(observed)) %>%
+               observation = as.numeric(observation)) %>%
         dplyr::filter(rowSums(is.na(.)) != ncol(.)) # remove the empty row
       arrow::write_parquet(x = empty, sink = file_name)
       if(fs::file_exists(file_name)){
@@ -207,7 +207,7 @@ read.avro.tsd <- function(sc, name = 'name', path, thermistor_depths, dir, delet
         # get in the same long format as the NEON portal data
         pivot_longer(cols = -c("time", "site_id"), 
                      names_to = "variable", 
-                     values_to = "observed")
+                     values_to = "observation")
       
     } 
   }
@@ -227,11 +227,11 @@ read.avro.tsd <- function(sc, name = 'name', path, thermistor_depths, dir, delet
     empty <- data.frame(site_id = NA,
                         time = NA, 
                         variable = NA, 
-                        observed = NA)  %>%
+                        observation = NA)  %>%
       mutate(site_id = as.character(site_id),
              time = as.Date(time),
              variable = as.character(variable),
-             observed = as.numeric(observed)) %>%
+             observation = as.numeric(observation)) %>%
       dplyr::filter(rowSums(is.na(.)) != ncol(.)) # remove the empty row
     if(fs::file_exists(file_name) & delete_files){
       fs::file_delete(path)
@@ -289,7 +289,7 @@ read.avro.tsd.profile <- function(sc, name = 'name', path, thermistor_depths, co
         # get in the same long format as the NEON portal data
         pivot_longer(cols = -c("time", "site_id", "depth"), 
                      names_to = "variable", 
-                     values_to = "observed")
+                     values_to = "observation")
       
     } 
   }
@@ -313,12 +313,12 @@ read.avro.tsd.profile <- function(sc, name = 'name', path, thermistor_depths, co
                         time = NA, 
                         depth = NA,
                         variable = NA, 
-                        observed = NA)  %>%
+                        observation = NA)  %>%
       mutate(site_id = as.character(site_id),
              time = as.Date(time),
              depth = as.numeric(depth),
              variable = as.character(variable),
-             observed = as.numeric(observed)) %>%
+             observation = as.numeric(observation)) %>%
       dplyr::filter(rowSums(is.na(.)) != ncol(.)) # remove the empty row
     arrow::write_parquet(x = empty, sink = file_name)
     if(fs::file_exists(file_name) & delete_files){
@@ -364,7 +364,7 @@ read.avro.prt <- function(sc, name = 'name', path, columns_keep, dir) {
         summarize(temperature = mean(surfWaterTempMean, na.rm = TRUE),
                   .groups = "drop") %>%
         rename(site_id = siteName) %>%
-        rename(observed = temperature) |> 
+        rename(observation = temperature) |> 
         mutate(variable = "temperature")
       
     } 
@@ -387,11 +387,11 @@ read.avro.prt <- function(sc, name = 'name', path, columns_keep, dir) {
     empty <- data.frame(site_id = NA, 
                         time = NA, 
                         variable = NA, 
-                        observed = NA)  %>%
+                        observation = NA)  %>%
       mutate(site_id = as.character(site_id),
              time = as.Date(time),
              variable = as.character(variable),
-             observed = as.numeric(observed)) %>%
+             observation = as.numeric(observation)) %>%
       dplyr::filter(rowSums(is.na(.)) != ncol(.)) # remove the empty row
     arrow::write_parquet(x = empty, sink = file_name)
     if(fs::file_exists(file_name)){

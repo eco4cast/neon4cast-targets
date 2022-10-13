@@ -101,7 +101,7 @@ wq_portal <- purrr::map_dfr(sites$field_site_id, function(site){
                      chla = mean(chla, na.rm = TRUE),.groups = "drop") %>%
     dplyr::select(time, site_id, 
                   oxygen, chla) %>% 
-    pivot_longer(cols = -c("time", "site_id"), names_to = "variable", values_to = "observed") %>%
+    pivot_longer(cols = -c("time", "site_id"), names_to = "variable", values_to = "observation") %>%
     dplyr::filter(!(variable == "chla" & site_id %in% stream_sites))
 }
 )
@@ -124,7 +124,14 @@ cur_wq_month <- wq_portal %>%
 # new_month_wq <- unique(format(c((as.Date(max(wq_portal$time)) %m+% months(1)), 
 #                                 (Sys.Date() - days(2))), "%Y-%m"))
 
-# Start by deleting superseded files
+
+# Download any new files from the Google Cloud
+download.neon.avro(months = cur_wq_month, 
+                   sites = unique(sites$field_site_id), 
+                   data_product = '20288',  # WQ data product
+                   path = avro_file_directory)
+
+# Delete superseded files
 # Files that have been superseded by the NEON store files can be deleted from the relavent repository
 # Look in each repository to see if there are files that exceed the current maximum date of the NEON
 # store data
@@ -138,12 +145,6 @@ delete.neon.avro(months = cur_wq_month,
                  sites = unique(sites$field_site_id), 
                  path = avro_file_directory,
                  data_product = '20288')
-
-# Download any new files from the Google Cloud
-download.neon.avro(months = cur_wq_month, 
-                   sites = unique(sites$field_site_id), 
-                   data_product = '20288',  # WQ data product
-                   path = avro_file_directory)
 
 # Read in the new files to append to the NEONstore data
 # connect to spark locally 
@@ -216,28 +217,28 @@ chla_min <- 0
 # outside the ranges specified about
 
 wq_cleaned <- wq_full %>%
-  dplyr::mutate(observed = ifelse(is.na(observed),
-                                  observed, ifelse(observed >= DO_min & observed <= DO_max & variable == 'oxygen', 
-                                                   observed, ifelse(observed >= chla_min & observed <= chla_max & variable == 'chla', observed, NA)))) %>%
+  dplyr::mutate(observation = ifelse(is.na(observation),
+                                  observation, ifelse(observation >= DO_min & observation <= DO_max & variable == 'oxygen', 
+                                                   observation, ifelse(observation >= chla_min & observation <= chla_max & variable == 'chla', observation, NA)))) %>%
   # manual cleaning based on visual inspection
-  dplyr::mutate(observed = ifelse(site_id == "MAYF" & 
+  dplyr::mutate(observation = ifelse(site_id == "MAYF" & 
                                     between(time, ymd("2019-01-20"), ymd("2019-02-05")) &
-                                    variable == "oxygen", NA, observed),
-                observed = ifelse(site_id == "WLOU" &
-                                    !between(observed, 7.5, 11) & 
-                                    variable == "oxygen", NA, observed),
-                observed = ifelse(site_id == "BARC" & 
-                                    observed < 4 &
-                                    variable == "oxygen", NA, observed),
-                observed = ifelse(site_id == "BLDE" &
+                                    variable == "oxygen", NA, observation),
+                observation = ifelse(site_id == "WLOU" &
+                                    !between(observation, 7.5, 11) & 
+                                    variable == "oxygen", NA, observation),
+                observation = ifelse(site_id == "BARC" & 
+                                    observation < 4 &
+                                    variable == "oxygen", NA, observation),
+                observation = ifelse(site_id == "BLDE" &
                                     between(time, ymd("2020-07-01"), ymd("2020-12-31")) & 
-                                    variable == "oxygen", NA, observed),
-                observed = ifelse(site_id == "BIGC" &
+                                    variable == "oxygen", NA, observation),
+                observation = ifelse(site_id == "BIGC" &
                                     between(time, ymd("2021-10-25"), ymd("2021-10-27")) & 
-                                    variable == "oxygen", NA, observed),
-                observed = ifelse(site_id == "REDB" &
+                                    variable == "oxygen", NA, observation),
+                observation = ifelse(site_id == "REDB" &
                                     time == ymd("2022-04-28") & 
-                                    variable == "oxygen", NA, observed)) 
+                                    variable == "oxygen", NA, observation)) 
 
 #===============================================#
 message("#### Generate hourly temperature profiles for lake #############")
@@ -335,7 +336,7 @@ hourly_temp_profile_portal <- arrow::open_dataset(neon$path("TSD_30_min-basic-DP
   group_by(site_id, depth, time) %>%
   dplyr::summarize(temperature = mean(tsdWaterTempMean, na.rm = TRUE),.groups = "drop") %>%
   dplyr::select(time, site_id, temperature, depth) |> 
-  rename(observed = temperature) |> 
+  rename(observation = temperature) |> 
   mutate(variable = "temperature") |> 
   QC.temp(range = c(-5, 40), spike = 5, by.depth = T) %>%
   mutate(data_source = 'NEON_portal')
@@ -384,12 +385,12 @@ edi_lake_files <- c(edi_data[grepl(x = edi_data, pattern= lake_sites[1])],
 hourly_temp_profile_EDI <- purrr::map_dfr(.x = edi_lake_files, ~ read.csv(file = .x)) %>%
   rename('site_id' = siteID,
          'depth' = sensorDepth,
-         'observed' = waterTemp) %>%
+         'observation' = waterTemp) %>%
   mutate(startDate  = lubridate::ymd_hm(startDate),
          time = lubridate::ymd_h(format(startDate, '%Y-%m-%d %H')),
          depth = round(depth, digits = 1)) %>%
   group_by(site_id, time, depth) %>%
-  summarise(observed = mean(observed),.groups = "drop") %>%
+  summarise(observation = mean(observation),.groups = "drop") %>%
   mutate(variable = "temperature") %>%
   # include first QC of data
   QC.temp(range = c(-5, 40), spike = 5, by.depth = T) %>%
@@ -407,6 +408,11 @@ cur_tsd_month <- hourly_temp_profile_portal %>%
 # what is the next data from this?
 # new_month_tsd <- unique(format(c((as.Date(max(hourly_temp_profile_portal$time)) %m+% months(1)), (Sys.Date() - days(2))), "%Y-%m"))
 
+# Download any new files from the Google Cloud
+download.neon.avro(months = cur_tsd_month, 
+                   sites = unique(sites$field_site_id), 
+                   data_product = '20264',  # TSD data product
+                   path = avro_file_directory)
 # Start by deleting superseded files
 # Files that have been supersed by the NEON store files can be deleted from the relevent repository
 # Look in each repository to see if there are files that match the current maximum month of the NEON
@@ -422,11 +428,7 @@ delete.neon.avro(months = cur_tsd_month,
                  path = avro_file_directory,
                  data_product = '20264')
 
-# Download any new files from the Google Cloud
-download.neon.avro(months = cur_tsd_month, 
-                   sites = unique(sites$field_site_id), 
-                   data_product = '20264',  # TSD data product
-                   path = avro_file_directory)
+
 
 
 
@@ -489,9 +491,9 @@ hourly_temp_profile_avro <- arrow::open_dataset(s3) |>
 hourly_temp_profile_lakes <- bind_rows(hourly_temp_profile_portal, hourly_temp_profile_EDI, hourly_temp_profile_avro) %>%
   arrange(time, site_id, depth) %>%
   group_by(time, site_id, depth) %>%
-  summarise(observed = mean(observed, na.rm = T), .groups = "drop") |> 
+  summarise(observation = mean(observation, na.rm = T), .groups = "drop") |> 
   mutate(variable = "temperature") |> 
-  select(time, site_id, depth, variable, observed)
+  select(time, site_id, depth, variable, observation)
 
 #======================================================#
 
@@ -502,7 +504,7 @@ daily_temp_surface_lakes <- hourly_temp_profile_lakes %>%
   dplyr::filter(depth <= 1) %>%
   mutate(time = lubridate::as_date(time)) %>%
   group_by(site_id, time) %>%
-  summarise(observed = mean(observed, na.rm = T),.groups = "drop") %>%
+  summarise(observation = mean(observation, na.rm = T),.groups = "drop") %>%
   mutate(variable = 'temperature')     
 
 message("##### Stream temperatures #####")
@@ -519,7 +521,7 @@ temp_streams_portal <- temp_streams_portal %>%
   dplyr::group_by(time, site_id) %>%
   dplyr::summarize(temperature= mean(surfWaterTempMean, na.rm = TRUE),.groups = "drop") %>%
   dplyr::select(time, site_id, temperature) %>%
-  rename(observed = temperature) |> 
+  rename(observation = temperature) |> 
   mutate(variable = "temperature")
 
 temp_streams_portal_QC <- temp_streams_portal %>%
@@ -537,6 +539,12 @@ cur_prt_month <- temp_streams_portal_QC %>%
 # what is the next month from this plus the current month? These might be the same
 # new_month_prt <- unique(format(c((as.Date(max(temp_streams_portal_QC$time)) %m+% months(1)), (Sys.Date() - days(2))), "%Y-%m"))
 
+# Download any new files from the Google Cloud
+download.neon.avro(months = cur_prt_month, 
+                   sites = unique(sites$field_site_id), 
+                   data_product = '20053',  # PRT data product
+                   path = avro_file_directory)
+
 # Start by deleting superseded files
 # Files that have been supersed by the NEON store files can be deleted from the relevent repository
 # Look in each repository to see if there are files that match the current maximum month of the NEON
@@ -552,11 +560,6 @@ delete.neon.avro(months = cur_prt_month,
                  path = avro_file_directory,
                  data_product = '20053')
 
-# Download any new files from the Google Cloud
-download.neon.avro(months = cur_prt_month, 
-                   sites = unique(sites$field_site_id), 
-                   data_product = '20053',  # PRT data product
-                   path = avro_file_directory)
 
 # Read in the new files to append to the NEONstore data
 # connect to spark locally 
@@ -626,7 +629,7 @@ temp_rivers_portal <- temp_rivers_portal %>%
   dplyr::group_by(time, site_id) %>%
   dplyr::summarize(temperature = mean(tsdWaterTempMean, na.rm = TRUE),.groups = "drop") %>%
   dplyr::select(time, site_id, temperature) %>%
-  rename(observed = temperature) |> 
+  rename(observation = temperature) |> 
   mutate(variable = "temperature")
 
 temp_rivers_portal_QC <- temp_rivers_portal %>%
@@ -661,11 +664,11 @@ edi_rivers <- c(edi_data[grepl(x = edi_data, pattern= nonwadable_rivers[1])],
 # The hourly data set is for the whole water column.
 temp_rivers_EDI <- purrr::map_dfr(.x = edi_rivers, ~ read.csv(file = .x)) %>%
   rename('site_id' = siteID,
-         'observed' = waterTemp) %>%
+         'observation' = waterTemp) %>%
   mutate(startDate  = lubridate::ymd_hm(startDate),
          time = as.Date(startDate)) %>% 
   group_by(site_id, time) %>%
-  summarise(observed = mean(observed),.groups = "drop") %>%
+  summarise(observation = mean(observation),.groups = "drop") %>%
   # include first QC of data
   QC.temp(range = c(-5, 40), spike = 5, by.depth = F) |> 
   mutate(variable = "temperature")
@@ -729,7 +732,7 @@ temp_full <- dplyr::bind_rows(# Lakes surface temperature
   temp_rivers_avros) %>%
   dplyr::arrange(site_id, time) %>%
   group_by(site_id, time) %>%
-  summarise(observed = mean(observed, na.rm = T),.groups = "drop") %>%
+  summarise(observation = mean(observation, na.rm = T),.groups = "drop") %>%
   mutate(variable = 'temperature')
 
 
@@ -743,16 +746,16 @@ T_min <- -2 # gross min
 
 # GR flag will be true if the temperature is outside the range specified 
 temp_cleaned <-  temp_full %>%
-  dplyr::mutate(observed =ifelse(observed >= T_min & observed <= T_max , 
-                                 observed, NA))  %>%
-  # manual cleaning based on observed
-  dplyr:: mutate(observed = ifelse(site_id == "PRLA" & time <ymd("2019-01-01"),
-                                   NA, observed))
+  dplyr::mutate(observation =ifelse(observation >= T_min & observation <= T_max , 
+                                 observation, NA))  %>%
+  # manual cleaning based on observation
+  dplyr:: mutate(observation = ifelse(site_id == "PRLA" & time <ymd("2019-01-01"),
+                                   NA, observation))
 
 #### Targets==========================
 targets_long <- dplyr::bind_rows(wq_cleaned, temp_cleaned) %>%
   dplyr::arrange(site_id, time, variable) %>%
-  dplyr::mutate(observed = ifelse(is.nan(observed), NA, observed))
+  dplyr::mutate(observation = ifelse(is.nan(observation), NA, observation))
 
 message("#### Writing forecasts to file ####")
 
@@ -762,7 +765,7 @@ targets_long <- targets_long |>
 ### Write out the targets
 write_csv(targets_long, "aquatics-targets.csv.gz")
 
-#ggplot(targets_long, aes(x = time, y = observed)) +
+#ggplot(targets_long, aes(x = time, y = observation)) +
 #  geom_point() +
 #  facet_grid(variable~site_id, scale = "free")
 
@@ -774,7 +777,7 @@ write_csv(hourly_temp_profile_lakes, "aquatics-expanded-observations.csv.gz")
 
 #hourly_temp_profile_lakes |> 
 #  dplyr::filter(site_id == "CRAM") |> 
-#ggplot(aes(x = time, y = observed)) +
+#ggplot(aes(x = time, y = observation)) +
 #  geom_point() +
 #  facet_wrap(~as_factor(depth), scale = "free")
 

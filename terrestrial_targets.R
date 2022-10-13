@@ -146,11 +146,11 @@ co2_data <- flux_data %>%
          le = ifelse(site_id == "OSBS" & year(time) < 2019, NA, le),
          le = ifelse(site_id == "SRER" & year(time) < 2019, NA, le),
          le = ifelse(site_id == "BARR" & year(time) < 2019, NA, le)) |> 
-  pivot_longer(-c("time","site_id"), names_to = "variable", values_to = "observed")
+  pivot_longer(-c("time","site_id"), names_to = "variable", values_to = "observation")
 
 co2_data %>% 
   filter(variable == "nee") |> 
-  ggplot(aes(x = time, y = observed)) +
+  ggplot(aes(x = time, y = observation)) +
   geom_point() +
   facet_wrap(~site_id)
 
@@ -178,24 +178,24 @@ flux_target_30m <- left_join(full_time, co2_data, by = c("time", "site_id", "var
 
 valid_dates <- flux_target_30m %>% 
   mutate(date = as_date(time)) %>% 
-  filter(!is.na(observed)) %>%
+  filter(!is.na(observation)) %>%
   group_by(date, site_id, variable) %>% 
   summarise(count = n(), .groups = "drop")
 
 flux_target_daily <- flux_target_30m %>% 
   mutate(date = as_date(time)) %>% 
   group_by(date, site_id, variable) %>% 
-  summarize(observed = mean(observed, na.rm = TRUE), .groups = "drop") |> 
+  summarize(observation = mean(observation, na.rm = TRUE), .groups = "drop") |> 
   left_join(valid_dates, by = c("date","site_id", "variable")) |> 
-  mutate(observed = ifelse(count > 24, observed, NA),
-         observed = ifelse(is.nan(observed), NA, observed)) %>% 
+  mutate(observation = ifelse(count > 24, observation, NA),
+         observation = ifelse(is.nan(observation), NA, observation)) %>% 
   rename(time = date) %>% 
   select(-count) |> 
-  mutate(observed = ifelse(variable == "nee", (observed * 12 / 1000000) * (60 * 60 * 24), observed))
+  mutate(observation = ifelse(variable == "nee", (observation * 12 / 1000000) * (60 * 60 * 24), observation))
 
 flux_target_daily %>% 
   filter(year(time) > 2021) %>% 
-  ggplot(aes(x = time, y = observed)) + 
+  ggplot(aes(x = time, y = observation)) + 
   geom_point() +
   facet_grid(variable~site_id, scale = "free")
 
@@ -214,8 +214,8 @@ flux_target_daily %>%
 #     filter(site_id == site_names[s],
 #            variable == "nee")
 #   
-#   unc <- flux.uncertainty(measurement = temp$observed, 
-#                           QC = rep(0, length(temp$observed)),
+#   unc <- flux.uncertainty(measurement = temp$observation, 
+#                           QC = rep(0, length(temp$observation)),
 #                           bin.num = 30)
 #   
 #   nee_intercept[s] <- unc$intercept
@@ -226,8 +226,8 @@ flux_target_daily %>%
 #     filter(site_id == site_names[s],
 #            variable == "le")
 #   
-#   unc <- flux.uncertainty(measurement = temp$observed, 
-#                           QC = rep(0, length(temp$observed)),
+#   unc <- flux.uncertainty(measurement = temp$observation, 
+#                           QC = rep(0, length(temp$observation)),
 #                           bin.num = 30)
 #   
 #   le_intercept[s] <- unc$intercept
@@ -260,11 +260,11 @@ flux_target_daily %>%
 # flux_target_30m <- left_join(flux_target_30m, site_uncertainty, by = c("site_id", "variable"))
 
 flux_target_30m <- flux_target_30m |> 
-  select(time, site_id, variable, observed) |> 
+  select(time, site_id, variable, observation) |> 
   rename(datetime = time)
 
 flux_target_daily <- flux_target_daily |> 
-  select(time, site_id, variable, observed) |> 
+  select(time, site_id, variable, observation) |> 
   rename(datetime = time)
 
 write_csv(flux_target_30m, "terrestrial_30min-targets.csv.gz")

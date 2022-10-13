@@ -73,7 +73,7 @@ abund <- counts %>%
 targets_na <- full_join(abund, richness)
 
 ## site-dates that have sampling effort but no counts should be
-## treated as explicit observed 0s
+## treated as explicit observation 0s
 
 ## FIXME some may have effort but no sorting due only to latency, should not be treated as zeros
 
@@ -81,10 +81,10 @@ targets <- effort %>%
   select(siteID, time) %>%
   left_join(targets_na) %>%
   tidyr::replace_na(list(richness = 0L, abundance = 0)) |> 
-  pivot_longer(-c("time","siteID"), names_to = "variable", values_to = "observed") |> 
+  pivot_longer(-c("time","siteID"), names_to = "variable", values_to = "observation") |> 
   rename(site_id = siteID) |> 
   mutate(iso_week = ISOweek::ISOweek(time)) |> 
-  select(time, site_id, variable, observed, iso_week)
+  select(time, site_id, variable, observation, iso_week)
 
 targets <- targets |> 
   rename(datetime = time)

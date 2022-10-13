@@ -33,7 +33,7 @@ for(i in 1:nrow(sites)){
     mutate(site_id = stringr::str_sub(siteName, 10, 13), 
            time = date) %>% 
     select(time, site_id, gcc_90, rcc_90) |> 
-    pivot_longer(-c("time", "site_id"), names_to = "variable", values_to = "observed") |> 
+    pivot_longer(-c("time", "site_id"), names_to = "variable", values_to = "observation") |> 
     mutate(sd = ifelse(variable == "gcc_90", gcc_sd, rcc_sd))
 
   allData <- rbind(allData,subPhenoData)
@@ -61,7 +61,7 @@ for(i in 1:nrow(sites)){
 allData2 <- left_join(combined, allData, by = c("time", "site_id", "variable"))
 
 allData2 <- allData2 |> 
-  select("time", "site_id", "variable", "observed") |> 
+  select("time", "site_id", "variable", "observation") |> 
   rename(datetime = time)
 
 readr::write_csv(allData2, "phenology-targets.csv.gz")
