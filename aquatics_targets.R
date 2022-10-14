@@ -194,6 +194,10 @@ s3 <- arrow::SubTreeFileSystem$create(file.path(parquet_file_directory, "wq"))
 wq_avro_df <- arrow::open_dataset(s3) |> 
   collect()
 
+if("observed" %in% names(wq_avro_df)){
+  wq_avro_df <- wq_avro_df |> rename(observation = observed)
+}
+
 
 # Combine the avro files with the portal data
 wq_full <- dplyr::bind_rows(wq_portal, wq_avro_df) %>%
@@ -487,6 +491,10 @@ s3 <- arrow::SubTreeFileSystem$create(file.path(parquet_file_directory, "tsd"))
 hourly_temp_profile_avro <- arrow::open_dataset(s3) |> 
   collect()
 
+if("observed" %in% names(hourly_temp_profile_avro)){
+  hourly_temp_profile_avro <- hourly_temp_profile_avro |> rename(observation = observed)
+}
+
 # Combine the three data sources
 hourly_temp_profile_lakes <- bind_rows(hourly_temp_profile_portal, hourly_temp_profile_EDI, hourly_temp_profile_avro) %>%
   arrange(time, site_id, depth) %>%
@@ -609,6 +617,13 @@ s3 <- arrow::SubTreeFileSystem$create(file.path(parquet_file_directory, "prt"))
 temp_streams_avros <- arrow::open_dataset(s3) |> 
   collect()
 
+if("observed" %in% names(temp_streams_avros)){
+  temp_streams_avros <- temp_streams_avros |> rename(observation = observed)
+}
+
+
+
+
 #===============================================#
 
 message("##### River temperature ######")
@@ -713,6 +728,11 @@ s3 <- arrow::SubTreeFileSystem$create(file.path(parquet_file_directory, "river_t
 
 temp_rivers_avros <- arrow::open_dataset(s3) |> 
   collect()
+
+if("observed" %in% names(temp_rivers_avros)){
+  temp_rivers_avros <- temp_rivers_avros |> rename(observation = observed)
+}
+
 
 #===========================================#
 
