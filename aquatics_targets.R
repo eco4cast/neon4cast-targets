@@ -127,7 +127,6 @@ cur_wq_month <- wq_portal %>%
 
 # Download any new files from the Google Cloud
 download.neon.avro(months = cur_wq_month, 
-                   sites = unique(sites$field_site_id), 
                    data_product = '20288',  # WQ data product
                    path = avro_file_directory)
 
@@ -137,12 +136,10 @@ download.neon.avro(months = cur_wq_month,
 # store data
 
 delete.neon.parquet(months = cur_wq_month,
-                    sites = unique(sites$field_site_id), 
                     path = file.path(parquet_file_directory, "wq"),
                     data_product = '20288')
 
 delete.neon.avro(months = cur_wq_month,
-                 sites = unique(sites$field_site_id), 
                  path = avro_file_directory,
                  data_product = '20288')
 
@@ -414,7 +411,6 @@ cur_tsd_month <- hourly_temp_profile_portal %>%
 
 # Download any new files from the Google Cloud
 download.neon.avro(months = cur_tsd_month, 
-                   sites = unique(sites$field_site_id), 
                    data_product = '20264',  # TSD data product
                    path = avro_file_directory)
 # Start by deleting superseded files
@@ -423,12 +419,10 @@ download.neon.avro(months = cur_tsd_month,
 # store data
 
 delete.neon.parquet(months = cur_tsd_month,
-                    sites = unique(sites$field_site_id), 
                     path = file.path(parquet_file_directory, "tsd"),
                     data_product = '20264')
 
 delete.neon.avro(months = cur_tsd_month,
-                 sites = unique(sites$field_site_id), 
                  path = avro_file_directory,
                  data_product = '20264')
 
@@ -549,7 +543,6 @@ cur_prt_month <- temp_streams_portal_QC %>%
 
 # Download any new files from the Google Cloud
 download.neon.avro(months = cur_prt_month, 
-                   sites = unique(sites$field_site_id), 
                    data_product = '20053',  # PRT data product
                    path = avro_file_directory)
 
@@ -559,12 +552,10 @@ download.neon.avro(months = cur_prt_month,
 # store data
 
 delete.neon.parquet(months = cur_prt_month,
-                    sites = unique(sites$field_site_id), 
                     path = file.path(parquet_file_directory, "prt"),
                     data_product = '20053')
 
 delete.neon.avro(months = cur_prt_month,
-                 sites = unique(sites$field_site_id), 
                  path = avro_file_directory,
                  data_product = '20053')
 

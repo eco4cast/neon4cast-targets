@@ -1,5 +1,5 @@
 
-download.neon.avro <- function(months, sites, data_product, path) {
+download.neon.avro <- function(months, data_product, path) {
   for (i in 1:length(months$site_id)) {
     # create a directory for each site (if one doesn't already exist)
     if (!paste0('site=', months$site_id[i]) %in% list.dirs(path, full.names = F)) {
@@ -40,7 +40,7 @@ download.neon.avro <- function(months, sites, data_product, path) {
  
 
 # delete the superseded files
-delete.neon.parquet <- function(months, sites, path, data_product) {
+delete.neon.parquet <- function(months, path, data_product) {
   
   for (i in 1:nrow(months)) {
     site_parquet <- dir(path = path,
@@ -57,7 +57,7 @@ delete.neon.parquet <- function(months, sites, path, data_product) {
 }
 
 # delete the superseded files
-delete.neon.avro <- function(months, sites, path, data_product) {
+delete.neon.avro <- function(months, path, data_product) {
   
   for (i in 1:nrow(months)) {
     
