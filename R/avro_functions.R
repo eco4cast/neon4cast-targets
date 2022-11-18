@@ -1,15 +1,13 @@
 
 download.neon.avro <- function(months, sites, data_product, path) {
-  for (i in 1:length(sites)) {
+  for (i in 1:length(months$site_id)) {
     # create a directory for each site (if one doesn't already exist)
-    if (paste0('site=', months$site_id[i]) %in% list.dirs(path, full.names = F)) {
-      # message('directory exists')
-    } else {
-      dir.create(path = paste0(path, '/site=', sites[i]), recursive = TRUE, showWarnings = FALSE)
+    if (!paste0('site=', months$site_id[i]) %in% list.dirs(path, full.names = F)) {
+      dir.create(path = paste0(path, '/site=', months$site_id[i]), recursive = TRUE, showWarnings = FALSE)
       message('creating new directory')
     }
     
-    message(paste0('downloading site ', i, '/', length(sites)))
+    message(paste0('downloading site ', i, '/', length(months$site_id)))
     
     month_use <- unique(format(c(months$new_date[i], Sys.Date() + days(2)), "%Y-%m"))
     # loop through each month (max 2) and each dp listed
@@ -25,11 +23,11 @@ download.neon.avro <- function(months, sites, data_product, path) {
                       # -m cp runs the copy function in parallel to speed up download
                       month_use[j],
                       '/site=',
-                      sites[i],
+                      months$site_id[i],
                       "/* ",
                       path,
                       '/site=',
-                      sites[i]),
+                      months$site_id[i]),
                ignore.stderr = T)
         
       }
@@ -138,7 +136,7 @@ read.avro.wq <- function(sc, name = 'name', path, columns_keep, dir ) {
   if (exists('daily_wq')) {
     arrow::write_parquet(x = daily_wq, sink = file_name)
     if(fs::file_exists(file_name)){
-    fs::file_delete(path)
+    #fs::file_delete(path)
     }
   } else {
       # create an empty df to return
@@ -153,7 +151,7 @@ read.avro.wq <- function(sc, name = 'name', path, columns_keep, dir ) {
         dplyr::filter(rowSums(is.na(.)) != ncol(.)) # remove the empty row
       arrow::write_parquet(x = empty, sink = file_name)
       if(fs::file_exists(file_name)){
-        fs::file_delete(path)
+        #fs::file_delete(path)
       }
   }
 }
