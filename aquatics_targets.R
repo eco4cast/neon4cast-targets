@@ -690,6 +690,19 @@ temp_rivers_EDI <- purrr::map_dfr(.x = edi_rivers, ~ read.csv(file = .x)) %>%
 
 
 # avros
+message('download non-wadable rivers avros')
+cur_tsd_month <- temp_rivers_portal_QC %>%
+  group_by(site_id) %>%
+  summarise(cur_wq_month = as.Date(max(time))) %>%
+  mutate(new_date = cur_wq_month + days(1))
+# what is the next data from this?
+# new_month_tsd <- unique(format(c((as.Date(max(hourly_temp_profile_portal$time)) %m+% months(1)), (Sys.Date() - days(2))), "%Y-%m"))
+
+# Download any new files from the Google Cloud
+download.neon.avro(months = cur_tsd_month, 
+                   sites = sites$field_site_id[which(sites$field_site_subtype == 'Non-wadeable River')], 
+                   data_product = '20264',  # TSD data product
+                   path = avro_file_directory)
 
 message("Generate a list of nonwadable_rivers avro files to be read")
 tsd_avro_files <- paste0(avro_file_directory, '/',
