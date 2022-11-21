@@ -691,7 +691,6 @@ cur_tsd_month <- temp_rivers_portal_QC %>%
 
 # Download any new files from the Google Cloud
 download.neon.avro(months = cur_tsd_month, 
-                   sites = sites$field_site_id[which(sites$field_site_subtype == 'Non-wadeable River')], 
                    data_product = '20264',  # TSD data product
                    path = avro_file_directory)
 
