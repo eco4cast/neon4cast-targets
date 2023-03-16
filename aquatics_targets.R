@@ -76,33 +76,38 @@ message("#### Generate WQ table #############")
 
 wq_portal <- purrr::map_dfr(sites$field_site_id, function(site){
   message(site)
-  arrow::open_dataset(neon$path("waq_instantaneous-basic-DP1.20288.001"), partitioning = "siteID") %>%   # waq_instantaneous
+arrow::open_dataset(neon$path("waq_instantaneous-basic-DP1.20288.001"), partitioning = "siteID") %>%   # waq_instantaneous
     #wq_portal <- neonstore::neon_table("waq_instantaneous", site = sites$field_site_id, lazy = TRUE) %>%   # waq_instantaneous
     dplyr::filter(siteID %in% site) %>%
     dplyr::select(siteID, startDateTime, sensorDepth,
                   dissolvedOxygen,dissolvedOxygenExpUncert,dissolvedOxygenFinalQF, 
-                  chlorophyll, chlorophyllExpUncert,chlorophyllFinalQF) %>%
+                  chlorophyll, chlorophyllExpUncert,chlorophyllFinalQF,
+                  chlaRelativeFluorescence, chlaRelFluoroFinalQF) %>%
     dplyr::mutate(sensorDepth = as.numeric(sensorDepth),
                   dissolvedOxygen = as.numeric(dissolvedOxygen),
                   dissolvedOxygenExpUncert = as.numeric(dissolvedOxygenExpUncert),
                   chla = as.numeric(chlorophyll),
-                  chlorophyllExpUncert = as.numeric(chlorophyllExpUncert)) %>%
+                  chlorophyllExpUncert = as.numeric(chlorophyllExpUncert),
+                  chla_RFU = as.numeric(chlaRelativeFluorescence)) %>%
     dplyr::rename(site_id = siteID) %>% 
     dplyr::filter(((sensorDepth > 0 & sensorDepth < 1)| is.na(sensorDepth))) |> 
-    collect() %>% # sensor depth of NA == surface?
+    collect()   %>% # sensor depth of NA == surface?
     dplyr::mutate(startDateTime = as_datetime(startDateTime)) %>%
     dplyr::mutate(time = as_date(startDateTime)) %>%
     # QF (quality flag) == 0, is a pass (1 == fail), 
     # make NA so these values are not used in the mean summary
     dplyr::mutate(dissolvedOxygen = ifelse(dissolvedOxygenFinalQF == 0, dissolvedOxygen, NA),
-                  chla = ifelse(chlorophyllFinalQF == 0, chla, NA)) %>% 
+                  chla = ifelse(chlorophyllFinalQF == 0, chla, NA),
+                  chla_RFU = ifelse(chlaRelFluoroFinalQF == 0, chla_RFU, NA)) %>% 
     dplyr::group_by(site_id, time) %>%
     dplyr::summarize(oxygen = mean(dissolvedOxygen, na.rm = TRUE),
-                     chla = mean(chla, na.rm = TRUE),.groups = "drop") %>%
+                     chla = mean(chla, na.rm = TRUE),
+                     chla_RFU = mean(chla_RFU, na.rm = T), .groups = "drop") %>%
     dplyr::select(time, site_id, 
-                  oxygen, chla) %>% 
+                  oxygen, chla, chla_RFU) %>% 
     pivot_longer(cols = -c("time", "site_id"), names_to = "variable", values_to = "observation") %>%
-    dplyr::filter(!(variable == "chla" & site_id %in% stream_sites))
+    dplyr::filter(!((variable == "chla" & site_id %in% stream_sites) | 
+                      (variable == "chla_RFU" & site_id %in% stream_sites)))
 }
 )
 
@@ -157,7 +162,9 @@ wq_vars <- c('siteName',
              'dissolvedOxygenFinalQF',
              'chlorophyll',
              'chlorophyllExpUncert',
-             'chlorophyllFinalQF')
+             'chlorophyllFinalQF',
+             'chlaRelativeFluorescence',
+             'chlaRelFluoroFinalQF')
 columns_keep <- c('siteName', 'termName', 'startDate', 'Value', 'verticalIndex')
 
 # Generate a list of files to be read
@@ -217,30 +224,64 @@ chla_min <- 0
 # GR flag will be true if either the DO concentration or the chlorophyll are 
 # outside the ranges specified about
 
-wq_cleaned <- wq_full %>%
+wq_cleaned <- wq_full  |> 
+  tidyr::pivot_wider(names_from = variable, 
+                     values_from = observation, 
+                     id_cols = c(time, site_id)) |> 
+  dplyr::mutate(chla = ifelse(site_id == "BARC" & lubridate::as_date(time) >= lubridate::as_date("2021-09-21"),
+                              chla_RFU,                               
+                              chla),
+                chla = ifelse(site_id == "BLWA" & lubridate::as_date(time) >= lubridate::as_date("2021-09-15"),
+                              chla_RFU,                               
+                              chla),
+                chla = ifelse(site_id == "CRAM" & lubridate::as_date(time) >= lubridate::as_date("2022-04-01"),
+                              chla_RFU,                               
+                              chla),
+                chla = ifelse(site_id == "FLNT" & lubridate::as_date(time) >= lubridate::as_date("2021-11-09"),
+                              chla_RFU,                               
+                              chla),
+                chla = ifelse(site_id == "LIRO" & lubridate::as_date(time) >= lubridate::as_date("2022-04-01"),
+                              chla_RFU,                               
+                              chla),
+                chla = ifelse(site_id == "PRLA" & lubridate::as_date(time) >= lubridate::as_date("2022-04-01"),
+                              chla_RFU,                               
+                              chla),
+                chla = ifelse(site_id == "PRPO" & lubridate::as_date(time) >= lubridate::as_date("2022-04-01"),
+                              chla_RFU,                               
+                              chla),
+                chla = ifelse(site_id == "SUGG" & lubridate::as_date(time) >= lubridate::as_date("2021-09-21"),
+                              chla_RFU,                               
+                              chla),
+                chla = ifelse(site_id == "TOMB" & lubridate::as_date(time) >= lubridate::as_date("2021-09-21"),
+                              chla_RFU,                               
+                              chla),
+                chla = ifelse(site_id == "TOOK" & lubridate::as_date(time) >= lubridate::as_date("2022-04-01"),
+                              chla_RFU,                               
+                              chla)) |> 
+  tidyr::pivot_longer(cols = -c("time", "site_id"), names_to = 'variable', values_to = 'observation') |> 
+  dplyr::filter(variable != 'chla_RFU') %>%
   dplyr::mutate(observation = ifelse(is.na(observation),
-                                  observation, ifelse(observation >= DO_min & observation <= DO_max & variable == 'oxygen', 
-                                                   observation, ifelse(observation >= chla_min & observation <= chla_max & variable == 'chla', observation, NA)))) %>%
+                                     observation, ifelse(observation >= DO_min & observation <= DO_max & variable == 'oxygen', 
+                                                         observation, ifelse(observation >= chla_min & observation <= chla_max & variable == 'chla', observation, NA)))) %>%
   # manual cleaning based on visual inspection
   dplyr::mutate(observation = ifelse(site_id == "MAYF" & 
-                                    between(time, ymd("2019-01-20"), ymd("2019-02-05")) &
-                                    variable == "oxygen", NA, observation),
+                                       between(time, ymd("2019-01-20"), ymd("2019-02-05")) &
+                                       variable == "oxygen", NA, observation),
                 observation = ifelse(site_id == "WLOU" &
-                                    !between(observation, 7.5, 11) & 
-                                    variable == "oxygen", NA, observation),
+                                       !between(observation, 7.5, 11) & 
+                                       variable == "oxygen", NA, observation),
                 observation = ifelse(site_id == "BARC" & 
-                                    observation < 4 &
-                                    variable == "oxygen", NA, observation),
+                                       observation < 4 &
+                                       variable == "oxygen", NA, observation),
                 observation = ifelse(site_id == "BLDE" &
-                                    between(time, ymd("2020-07-01"), ymd("2020-12-31")) & 
-                                    variable == "oxygen", NA, observation),
+                                       between(time, ymd("2020-07-01"), ymd("2020-12-31")) & 
+                                       variable == "oxygen", NA, observation),
                 observation = ifelse(site_id == "BIGC" &
-                                    between(time, ymd("2021-10-25"), ymd("2021-10-27")) & 
-                                    variable == "oxygen", NA, observation),
+                                       between(time, ymd("2021-10-25"), ymd("2021-10-27")) & 
+                                       variable == "oxygen", NA, observation),
                 observation = ifelse(site_id == "REDB" &
-                                    time == ymd("2022-04-28") & 
-                                    variable == "oxygen", NA, observation)) 
-
+                                       time == ymd("2022-04-28") & 
+                                       variable == "oxygen", NA, observation))
 #===============================================#
 message("#### Generate hourly temperature profiles for lake #############")
 message("##### NEON portal data #####")
@@ -591,6 +632,24 @@ new_files <- map_lgl(prt_avro_files, function(x){
 })
 
 prt_avro_files <- prt_avro_files[which(new_files)]
+
+## check for bad NEON files and remove if present 
+problem_files <- c('/home/rstudio/data/aquatic_avro/site=BIGC/BIGC_L0_to_L1_Surface_Water_Temperature_DP1.20053.001__2021-12-27.avro',
+                   '/home/rstudio/data/aquatic_avro/site=BIGC/BIGC_L0_to_L1_Surface_Water_Temperature_DP1.20053.001__2023-02-01.avro',
+                   '/home/rstudio/data/aquatic_avro/site=BIGC/BIGC_L0_to_L1_Surface_Water_Temperature_DP1.20053.001__2023-01-28.avro')
+
+problem_files <- map_lgl(prt_avro_files, function(x){
+  problem_file <- FALSE
+  if(stringr::str_detect(x, "BIGC_L0_to_L1_Surface_Water_Temperature_DP1.20053.001")){
+    problem_file <- TRUE
+  }
+  return(problem_file)
+})
+
+if(any(problem_files == TRUE)){
+prt_avro_files <- prt_avro_files[!problem_files]
+  message('Problem files removed')
+}
 
 
 if(length(prt_avro_files > 0)){
