@@ -228,34 +228,44 @@ wq_cleaned <- wq_full  |>
   tidyr::pivot_wider(names_from = variable, 
                      values_from = observation, 
                      id_cols = c(time, site_id)) |> 
-  dplyr::mutate(chla = ifelse(site_id == "BARC" & lubridate::as_date(time) >= lubridate::as_date("2021-09-21"),
+  dplyr::mutate(chla = ifelse(site_id == "BARC" & (lubridate::as_date(time) >= lubridate::as_date("2021-09-21") &
+                                                     lubridate::as_date(time) <= lubridate::as_date("2023-03-16")),
                               chla_RFU,                               
                               chla),
-                chla = ifelse(site_id == "BLWA" & lubridate::as_date(time) >= lubridate::as_date("2021-09-15"),
+                chla = ifelse(site_id == "BLWA" & (lubridate::as_date(time) >= lubridate::as_date("2021-09-15") &
+                                                     lubridate::as_date(time) <= lubridate::as_date("2023-03-16")),
                               chla_RFU,                               
                               chla),
-                chla = ifelse(site_id == "CRAM" & lubridate::as_date(time) >= lubridate::as_date("2022-04-01"),
+                chla = ifelse(site_id == "CRAM" & (lubridate::as_date(time) >= lubridate::as_date("2022-04-01") &
+                                                     lubridate::as_date(time) <= lubridate::as_date("2023-03-16")),
                               chla_RFU,                               
                               chla),
-                chla = ifelse(site_id == "FLNT" & lubridate::as_date(time) >= lubridate::as_date("2021-11-09"),
+                chla = ifelse(site_id == "FLNT" & (lubridate::as_date(time) >= lubridate::as_date("2021-11-09") &
+                                                     lubridate::as_date(time) <= lubridate::as_date("2023-03-16")),
                               chla_RFU,                               
                               chla),
-                chla = ifelse(site_id == "LIRO" & lubridate::as_date(time) >= lubridate::as_date("2022-04-01"),
+                chla = ifelse(site_id == "LIRO" & (lubridate::as_date(time) >= lubridate::as_date("2022-04-01") &
+                                                     lubridate::as_date(time) <= lubridate::as_date("2023-03-16")),
                               chla_RFU,                               
                               chla),
-                chla = ifelse(site_id == "PRLA" & lubridate::as_date(time) >= lubridate::as_date("2022-04-01"),
+                chla = ifelse(site_id == "PRLA" & (lubridate::as_date(time) >= lubridate::as_date("2022-04-01") &
+                                                     lubridate::as_date(time) <= lubridate::as_date("2023-03-16")),
                               chla_RFU,                               
                               chla),
-                chla = ifelse(site_id == "PRPO" & lubridate::as_date(time) >= lubridate::as_date("2022-04-01"),
+                chla = ifelse(site_id == "PRPO" & (lubridate::as_date(time) >= lubridate::as_date("2022-04-01") &
+                                                     lubridate::as_date(time) <= lubridate::as_date("2023-03-16")),
                               chla_RFU,                               
                               chla),
-                chla = ifelse(site_id == "SUGG" & lubridate::as_date(time) >= lubridate::as_date("2021-09-21"),
+                chla = ifelse(site_id == "SUGG" & (lubridate::as_date(time) >= lubridate::as_date("2021-09-21") &
+                                                     lubridate::as_date(time) <= lubridate::as_date("2023-03-16")),
                               chla_RFU,                               
                               chla),
-                chla = ifelse(site_id == "TOMB" & lubridate::as_date(time) >= lubridate::as_date("2021-09-21"),
+                chla = ifelse(site_id == "TOMB" & (lubridate::as_date(time) >= lubridate::as_date("2021-09-21") &
+                                                     lubridate::as_date(time) <= lubridate::as_date("2023-03-16")),
                               chla_RFU,                               
                               chla),
-                chla = ifelse(site_id == "TOOK" & lubridate::as_date(time) >= lubridate::as_date("2022-04-01"),
+                chla = ifelse(site_id == "TOOK" & (lubridate::as_date(time) >= lubridate::as_date("2022-04-01") &
+                                                     lubridate::as_date(time) <= lubridate::as_date("2023-03-16")),
                               chla_RFU,                               
                               chla)) |> 
   tidyr::pivot_longer(cols = -c("time", "site_id"), names_to = 'variable', values_to = 'observation') |> 
