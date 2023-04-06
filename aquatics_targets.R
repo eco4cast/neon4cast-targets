@@ -563,7 +563,9 @@ daily_temp_surface_lakes <- hourly_temp_profile_lakes %>%
 message("##### Stream temperatures #####")
 temp_streams_portal <- arrow::open_dataset(neon$path("TSW_30min-basic-DP1.20053.001"), partitioning = "siteID") %>% 
   #temp_streams_portal <- neonstore::neon_table("TSW_30min", site = sites$field_site_id) %>%
-  dplyr::filter(horizontalPosition == "101" | horizontalPosition == "111", # take upstream to match WQ data
+  dplyr::filter(horizontalPosition == "101" |
+                  horizontalPosition == "111" | # take upstream to match WQ data
+                  (horizontalPosition == "112" & siteID == "BLUE"), # no data at BLUE upstream
                 finalQF == 0) %>%  
   dplyr::select(startDateTime, siteID, surfWaterTempMean, surfWaterTempExpUncert, finalQF) %>%
   dplyr::collect() %>%
