@@ -207,7 +207,9 @@ if("observed" %in% names(wq_avro_df)){
 wq_full <- dplyr::bind_rows(wq_portal, wq_avro_df) %>%
   dplyr::arrange(site_id, time)
 
-
+wq_full <- wq_full |> 
+  group_by(site_id, time, variable) |> 
+  summarise(observation = mean(observation, na.rm = TRUE), .groups = "drop")
 #==============================#
 
 message("##### WQ QC protocol =======")
