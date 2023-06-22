@@ -32,13 +32,14 @@ field <- neon_table("bet_fielddata-expanded")
 #### Generate derived richness table  ####################
 beetles <- resolve_taxonomy(sorting, para, expert) %>%
   mutate(iso_week = ISOweek::ISOweek(collectDate),
-         time = ISOweek::ISOweek2date(paste0(iso_week, "-1"))) %>%
+         time = ISOweek::ISOweek2date(paste0(iso_week, "-1")),
+         year = as.numeric(format(collectDate, "%Y"))) %>%
   as_tibble()
 
 richness <- beetles %>%
-  select(taxonID, siteID, collectDate, time) %>%
+  select(taxonID, siteID, collectDate, year) %>%
   distinct() %>%
-  count(siteID, time) %>%
+  count(siteID, year) %>%
   rename(richness = n)  %>%
   ungroup()
 
@@ -51,23 +52,25 @@ richness <- beetles %>%
 
 effort <- field %>%
   mutate(iso_week = ISOweek::ISOweek(collectDate),
-         time = ISOweek::ISOweek2date(paste0(iso_week, "-1"))) %>%
-  group_by(siteID, time) %>%
+         time = ISOweek::ISOweek2date(paste0(iso_week, "-1")),
+         year = as.numeric(format(collectDate, "%Y"))) %>%
+  group_by(siteID, year) %>%
   summarise(trapnights = as.integer(sum(collectDate - setDate)),
             .groups = "drop")
 
 counts <- beetles %>%
   mutate(iso_week = ISOweek::ISOweek(collectDate),
-         time = ISOweek::ISOweek2date(paste0(iso_week, "-1"))) %>%
-  group_by(siteID, time) %>%
+         time = ISOweek::ISOweek2date(paste0(iso_week, "-1")),
+         year = as.numeric(format(collectDate, "%Y"))) %>%
+  group_by(siteID, year) %>%
   summarise(count = sum(as.numeric(individualCount), na.rm = TRUE),
             .groups = "drop")
 
 abund <- counts %>%
   left_join(effort) %>%
-  arrange(time) %>%
+  arrange(year) %>%
   mutate(abundance = count / trapnights) %>%
-  select(siteID, time, abundance) %>%
+  select(siteID, year, abundance) %>%
   ungroup()
 
 targets_na <- full_join(full_join(abund, richness), effort)
@@ -78,13 +81,12 @@ targets_na <- full_join(full_join(abund, richness), effort)
 ## FIXME some may have effort but no sorting due only to latency, should not be treated as zeros
 
 targets <- effort %>%
-  select(siteID, time) %>%
+  select(siteID, year) %>%
   left_join(targets_na) %>%
   tidyr::replace_na(list(richness = 0L, abundance = 0, trapnights = 0L)) |> 
-  pivot_longer(-c("time","siteID"), names_to = "variable", values_to = "observation") |> 
+  pivot_longer(-c("year","siteID"), names_to = "variable", values_to = "observation") |> 
   rename(site_id = siteID) |> 
-  mutate(iso_week = ISOweek::ISOweek(time)) |> 
-  select(time, site_id, variable, observation, iso_week)
+  select(year, site_id, variable, observation)
 
 targets <- targets |> 
   rename(datetime = time)
