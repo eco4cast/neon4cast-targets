@@ -70,7 +70,7 @@ abund <- counts %>%
   select(siteID, time, abundance) %>%
   ungroup()
 
-targets_na <- full_join(abund, richness)
+targets_na <- full_join(full_join(abund, richness), effort)
 
 ## site-dates that have sampling effort but no counts should be
 ## treated as explicit observation 0s
@@ -80,7 +80,7 @@ targets_na <- full_join(abund, richness)
 targets <- effort %>%
   select(siteID, time) %>%
   left_join(targets_na) %>%
-  tidyr::replace_na(list(richness = 0L, abundance = 0)) |> 
+  tidyr::replace_na(list(richness = 0L, abundance = 0, trapnights = 0L)) |> 
   pivot_longer(-c("time","siteID"), names_to = "variable", values_to = "observation") |> 
   rename(site_id = siteID) |> 
   mutate(iso_week = ISOweek::ISOweek(time)) |> 
