@@ -9,7 +9,13 @@ download.neon.avro <- function(months, data_product, path) {
     
     message(paste0('downloading site ', i, '/', length(months$site_id)))
     
-    month_use <- unique(format(c(months$new_date[i], Sys.Date() + days(2)), "%Y-%m"))
+    # month_use <- format(seq.Date(months$new_date[i], floor_date(Sys.Date() - days(2), 'month'), by = 'month'),
+    #                     "%Y-%m")
+    # 
+    month_use <- format(seq.Date(sort(c(months$new_date[i], floor_date(Sys.Date() - days(2), 'month')))[1],
+                                 sort(c(months$new_date[i], floor_date(Sys.Date() - days(2), 'month')))[2],
+                                 by = 'month'),
+                        "%Y-%m")
     # loop through each month (max 2) and each dp listed
     for (j in 1:length(month_use)) {
       
@@ -48,7 +54,7 @@ delete.neon.parquet <- function(months, path, data_product) {
     
     superseded <- site_parquet[which(lubridate::as_date(str_match(site_parquet, 
                                                     "__\\s*(.*?)\\s*.avro")[,2]) <= 
-                         months$cur_wq_month[i])]
+                         months$cur_wq_date[i])]
     
     if (length(superseded) != 0) {
       file.remove(paste0(path, '/',superseded))
@@ -66,7 +72,7 @@ delete.neon.avro <- function(months, path, data_product) {
     
     superseded <- site_avro[which(lubridate::as_date(str_match(site_avro, 
                                                                "__\\s*(.*?)\\s*.avro")[,2]) <= 
-                                    months$cur_wq_month[i])] 
+                                    months$cur_wq_date[i])] 
     
     if (length(superseded) != 0) {
       file.remove(paste0(path,'/site=', months$site_id[i], '/',superseded))
@@ -79,6 +85,8 @@ delete.neon.avro <- function(months, path, data_product) {
 # requires wq_vars - specify
 read.avro.wq <- function(sc, name = 'name', path, columns_keep, dir ) {
   message(paste0('reading file ', path))
+  profiling_sites <- c('CRAM', 'LIRO', 'BARC', 'TOOK')
+  
   wq_avro <- sparkavro::spark_read_avro(sc, 
                                         name = "name",
                                         path = path,
@@ -99,10 +107,14 @@ read.avro.wq <- function(sc, name = 'name', path, columns_keep, dir ) {
     as.data.frame() %>%
     suppressWarnings()
   
-  if (nrow(wq_tibble) >=1) {
+  if (nrow(wq_tibble) >=1 & 'sensorDepth' %in% colnames(wq_tibble)) {
     wq_tibble_wider <- wq_tibble %>%
       arrange(startDate, termName) %>%
       pivot_wider(names_from = termName, values_from = Value)  %>%
+      dplyr::mutate(sensorDepth = ifelse(siteName %in% profiling_sites, 
+                                         sensorDepth,
+                                         0.5)) |> 
+      dplyr::filter(sensorDepth > 0 & sensorDepth < 1) |> 
       filter_at(vars(ends_with('QF')), any_vars(. != 1)) # checks to see if any of the QF cols have a 1
 
     # if the filtering has left rows then find the mean
@@ -274,11 +286,6 @@ read.avro.tsd.profile <- function(sc, name = 'name', path, thermistor_depths, co
     if (nrow(tsd_tibble_wider) >= 1) {
       hourly_tsd <- tsd_tibble_wider  %>%
         mutate(time = lubridate::ymd_h(format(startDate, "%Y-%m-%d %H"))) %>%
-        # add missing columns (sites with no tsdWaterTempMean), need all otherwise function won't run
-        # tsdWaterTempMean = ifelse('tsdWaterTempMean' %in% colnames(tsd_tibble_wider), 
-        #                           tsdWaterTempMean, NA),
-        # tsdWaterTempExpUncert = ifelse('tsdWaterTempExpUncert' %in% colnames(tsd_tibble_wider),
-        #                                tsdWaterTempExpUncert, NA)) %>%
         group_by(siteName, time, thermistorDepth) %>%
         summarize(temperature = mean(tsdWaterTempMean, na.rm = TRUE),
                   .groups = "drop") %>%
@@ -299,7 +306,7 @@ read.avro.tsd.profile <- function(sc, name = 'name', path, thermistor_depths, co
   if (exists('hourly_tsd')) {
     hourly_tsd <- hourly_tsd |> 
       QC.temp(range = c(-5, 40), spike = 5, by.depth = T) |> 
-      mutate(data_source = 'NEON_pre-portal')
+      mutate(data_source = 'NEON_pre_release')
     
     arrow::write_parquet(x = hourly_tsd, sink = file_name)
     if(fs::file_exists(file_name) & delete_files){
