@@ -1,7 +1,10 @@
 #renv::restore()
 print(paste0("Running Creating Terrestrial Targets at ", Sys.time()))
 
-Sys.setenv("NEONSTORE_HOME" = "/home/rstudio/data/neonstore")
+#Sys.setenv("NEONSTORE_HOME" = "/home/rstudio/data/neonstore")
+
+Sys.setenv("NEONSTORE_HOME" = "/home/rstudio/data/neonstore_temp")
+
 pecan_flux_uncertainty <- "../pecan/modules/uncertainty/R/flux_uncertainty.R"
 readRenviron("~/.Renviron") # compatible with littler
 
@@ -15,6 +18,7 @@ library(tidyverse)
 library(lubridate)
 library(contentid)
 library(ncdf4)
+library(arrow)
 
 sites <- read_csv("https://raw.githubusercontent.com/eco4cast/neon4cast-targets/main/NEON_Field_Site_Metadata_20220412.csv") |> 
   dplyr::filter(terrestrial == 1)
@@ -23,14 +27,19 @@ site_names <- sites$field_site_id
 
 # Terrestrial
 
-#Get the published files on the portal
+neonstore::neon_download(product = "DP4.00200.001", type = "basic")
+neonstore::neon_store(product = "DP4.00200.001")
+#neon_disconnect()
 
 #DP4.00200.001 & DP1.00094.001
 #neon_store(product = "DP4.00200.001") 
-flux_data <- neon_table(table = "nsae-basic", site = site_names) %>% 
+flux_data <- neon_table(table = "nsae-basic", site = site_names, lazy = TRUE) %>% 
   mutate(timeBgn = as_datetime(timeBgn),
-         timeEnd = as_datetime(timeEnd))
-
+         timeEnd = as_datetime(timeEnd)) |> 
+  select(timeBgn, timeEnd, data.fluxCo2.turb.flux, siteID, data.fluxH2o.turb.flux, qfqm.fluxCo2.turb.qfFinl) |> 
+  mutate(year = year(timeBgn),
+         month = month(timeBgn)) |> 
+  collect()
 
 #Get the current unpublished flux data (5-day latency)
 
@@ -49,32 +58,37 @@ if(use_5day_data){
   
   for(i in 1:nrow(files)){
     destfile <- file.path(non_store_dir,"current_month",files$file_name[i])
-    parquet_file <- file.path(non_store_dir,"current_month_parquet",paste0(tools::file_path_sans_ext(files$file_name[i]),".parquet"))
+    parquet_file <- file.path(non_store_dir,"current_month_parquet",paste0(files$file_name[i],".parquet"))
     if(!(file.exists(parquet_file))){
       download.file(files$url[i], destfile = destfile)
-      R.utils::gunzip(destfile)
     }
   }
   
   fn_parquet <- list.files(file.path(non_store_dir,"current_month_parquet"))
   
   #Checking for files that have been updated
-  d <- tibble(file_full = fn_parquet,
-              file = tools::file_path_sans_ext(tools::file_path_sans_ext(tools::file_path_sans_ext(fn_parquet))),
-              date = lubridate::as_datetime(stringr::str_split(fn_parquet, "\\.", 12, simplify = TRUE)[, 10])) |> 
-    arrange(file, date) |> 
-    group_by(file) |> 
-    mutate(max_date = max(date),
-           delete = ifelse(date != max(date), 1, 0)) |> 
-    ungroup()
-  unlink(file.path(non_store_dir,"current_month_parquet", d$file_full[which(d$delete == 1)]))
-  
-  #remove files that are no longer in the unpublished s3 bucket because they are now in NEON portal
-  
-  for(i in 1:length(fn_parquet)){
-    if(!(paste0(tools::file_path_sans_ext(basename(fn_parquet[i])),".gz") %in% files$file_name)){
-      message(paste0("removing: ", basename(fn_parquet[i])))
-      unlink(file.path(non_store_dir,"current_month_parquet",fn_parquet[i]))
+  if(length(fn_parquet) > 0){
+    d <- tibble(file_full = fn_parquet,
+                file = tools::file_path_sans_ext(tools::file_path_sans_ext(fn_parquet)),
+                date = lubridate::as_datetime(stringr::str_split(fn_parquet, "\\.", 12, simplify = TRUE)[, 10])) |> 
+      arrange(file, date) |> 
+      group_by(file) |> 
+      mutate(max_date = max(date),
+             delete = ifelse(date != max(date), 1, 0)) |> 
+      ungroup()
+    
+    for(i in 1:nrow(d)){
+      if(d$delete[i] == 1){
+        unlink(file.path(non_store_dir,"current_month_parquet", d$file_full[i]))
+      }
+    }
+    #remove files that are no longer in the unpublished s3 bucket because they are now in NEON portal
+    
+    for(i in 1:length(fn_parquet)){
+      if(!tools::file_path_sans_ext(basename(fn_parquet[i])) %in% files$file_name){
+        message(paste0("removing: ", basename(fn_parquet[i])))
+        unlink(file.path(non_store_dir,"current_month_parquet",fn_parquet[i]))
+      }
     }
   }
   
@@ -89,16 +103,18 @@ if(use_5day_data){
     #new_files <- fn[which(!(basename(fn) %in% tools::file_path_sans_ext(basename(fn_parquet))))]
     purrr::walk(1:length(fn), function(i, fn){
       message(paste0(i, " of ", length(fn), " reading file ",fn[i]))
-      df <- neonstore::neon_read(files = fn[i])
+      df <- neonstore::neon_read(files = fn[i]) |> 
+        select(timeBgn, timeEnd, data.fluxCo2.turb.flux, siteID, data.fluxH2o.turb.flux, qfqm.fluxCo2.turb.qfFinl)
       arrow::write_parquet(x = df, file.path(non_store_dir,"current_month_parquet", paste0(basename(fn[i]),".parquet")))
       unlink(fn[i])
     },
     fn = fn)
   }
   
-  s3 <- arrow::SubTreeFileSystem$create(file.path(non_store_dir,"current_month_parquet"))
+  #s3 <- arrow::SubTreeFileSystem$create(file.path(non_store_dir,"current_month_parquet"))
   
-  flux_data_curr <- arrow::open_dataset(s3) |> 
+  flux_data_curr <- arrow::open_dataset(file.path(non_store_dir,"current_month_parquet")) |> 
+    select(timeBgn, timeEnd, data.fluxCo2.turb.flux, siteID, data.fluxH2o.turb.flux, qfqm.fluxCo2.turb.qfFinl) |> 
     collect()
   
   
@@ -108,12 +124,12 @@ if(use_5day_data){
 }
 
 
-flux_data |> 
-  group_by(siteID) |> 
-  summarize(min = min(timeBgn),
-            max = max(timeBgn), .groups = "drop") |> 
-  arrange(min) |> 
-  print(n = 50) 
+#flux_data |> 
+#  group_by(siteID) |> 
+#  summarize(min = min(timeBgn),
+#            max = max(timeBgn), .groups = "drop") |> 
+#  arrange(min) |> 
+#  print(n = 50) 
 
 flux_data <- flux_data %>% 
   mutate(time = as_datetime(timeBgn))
@@ -132,33 +148,33 @@ co2_data <- flux_data %>%
          le = ifelse(site_id == "BARR" & year(time) < 2019, NA, le)) |> 
   pivot_longer(-c("time","site_id"), names_to = "variable", values_to = "observation")
 
-co2_data %>% 
-  filter(variable == "nee") |> 
-  ggplot(aes(x = time, y = observation)) +
-  geom_point() +
-  facet_wrap(~site_id)
+#co2_data %>% 
+#  filter(variable == "nee") |> 
+#  ggplot(aes(x = time, y = observation)) +
+#  geom_point() +
+#  facet_wrap(~site_id)
 
-earliest <- min(as_datetime(c(co2_data$time)), na.rm = TRUE)
-latest <- max(as_datetime(c(co2_data$time)), na.rm = TRUE)
+#earliest <- min(as_datetime(c(co2_data$time)), na.rm = TRUE)
+#latest <- max(as_datetime(c(co2_data$time)), na.rm = TRUE)
 
 
-full_time_vector <- seq(min(c(co2_data$time), na.rm = TRUE), 
-                        max(c(co2_data$time), na.rm = TRUE), 
-                        by = "30 min")
+#full_time_vector <- seq(min(c(co2_data$time), na.rm = TRUE), 
+#                        max(c(co2_data$time), na.rm = TRUE), 
+#                        by = "30 min")
 
-full_time <- NULL
-for(i in 1:length(site_names)){
-  df_nee <- tibble(time = full_time_vector,
-                   site_id = rep(site_names[i], length(full_time_vector)),
-                   variable = "nee")
-  df_le <- tibble(time = full_time_vector,
-                  site_id = rep(site_names[i], length(full_time_vector)),
-                  variable = "le")
-  full_time <- bind_rows(full_time, df_nee, df_le)
-  
-}
+#full_time <- NULL
+#for(i in 1:length(site_names)){
+#  df_nee <- tibble(time = full_time_vector,
+#                   site_id = rep(site_names[i], length(full_time_vector)),
+#                   variable = "nee")
+#  df_le <- tibble(time = full_time_vector,
+#                  site_id = rep(site_names[i], length(full_time_vector)),
+#                  variable = "le")
+#  full_time <- bind_rows(full_time, df_nee, df_le)
+#  
+#}
 
-flux_target_30m <- left_join(full_time, co2_data, by = c("time", "site_id", "variable"))
+flux_target_30m <- co2_data #left_join(full_time, co2_data, by = c("time", "site_id", "variable"))
 
 valid_dates <- flux_target_30m %>% 
   mutate(date = as_date(time)) %>% 
@@ -177,11 +193,11 @@ flux_target_daily <- flux_target_30m %>%
   select(-count) |> 
   mutate(observation = ifelse(variable == "nee", (observation * 12 / 1000000) * (60 * 60 * 24), observation))
 
-flux_target_daily %>% 
-  filter(year(time) > 2021) %>% 
-  ggplot(aes(x = time, y = observation)) + 
-  geom_point() +
-  facet_grid(variable~site_id, scale = "free")
+#flux_target_daily %>% 
+#  filter(year(time) > 2021) %>% 
+#  ggplot(aes(x = time, y = observation)) + 
+#  geom_point() +
+#  facet_grid(variable~site_id, scale = "free")
 
 flux_target_30m <- flux_target_30m |> 
   select(time, site_id, variable, observation) |> 
@@ -196,7 +212,7 @@ if(add_TERN){
   
   sites <- read_csv("tern_field_site_metadata.csv", show_col_types = FALSE) |> 
     filter(!is.na(data_url))
-   
+  
   read_tern_site <- function(i, sites){
     nc <- ncdf4::nc_open(sites$data_url[i])
     
@@ -222,8 +238,6 @@ if(add_TERN){
   }
   
   tern_flux_target_30m <- map_dfr(1:nrow(sites), read_tern_site, sites)
-  
-  
   
   full_time <- NULL
   for(i in 1:nrow(sites)){
@@ -281,23 +295,61 @@ if(add_TERN){
   
 }
 
+#write_csv(flux_target_30m, "terrestrial_30min-targets.csv.gz")
+#write_csv(flux_target_daily, "terrestrial_daily-targets.csv.gz")
 
-
-
-write_csv(flux_target_30m, "terrestrial_30min-targets.csv.gz")
-write_csv(flux_target_daily, "terrestrial_daily-targets.csv.gz")
-
-message("#### Moving forecasts to s3 bucket ####")
 readRenviron("~/.Renviron") # compatible with littler
-aws.s3::put_object(file = "terrestrial_30min-targets.csv.gz", 
-                   object = "terrestrial_30min/terrestrial_30min-targets.csv.gz",
-                   bucket = "neon4cast-targets")
+# Write 30 minute data
 
-aws.s3::put_object(file = "terrestrial_daily-targets.csv.gz", 
-                   object = "terrestrial_daily/terrestrial_daily-targets.csv.gz",
-                   bucket = "neon4cast-targets")
+s3 <- arrow::s3_bucket("neon4cast-targets/terrestrial_30min",
+                       endpoint_override = "data.ecoforecast.org",
+                       access_key = Sys.getenv("AWS_ACCESS_KEY"),
+                       secret_key = Sys.getenv("AWS_SECRET_ACCESS_KEY"))
 
-unlink("terrestrial_30min-targets.csv.gz")
-unlink("terrestrial_daily-targets.csv.gz")
+flux_target_30m |> 
+  arrange(variable, datetime) |> 
+  arrow::write_csv_arrow(sink = s3$path("terrestrial_30min-targets.csv.gz"))
+
+flux_target_30m2 <- flux_target_30m |>
+  mutate(datetime = lubridate::as_datetime(datetime),
+         duration = "PT30M",
+         project_id = "neon4cast") |>
+  select(project_id, site_id, datetime, duration, variable, observation) |> 
+  arrange(variable, datetime) |> 
+  na.omit()
+
+s3 <- arrow::s3_bucket("bio230014-bucket01/challenges/targets/project_id=neon4cast/duration=PT30M",
+                       endpoint_override = "sdsc.osn.xsede.org",
+                       access_key = Sys.getenv("OSN_KEY"),
+                       secret_key = Sys.getenv("OSN_SECRET"))
+
+arrow::write_csv_arrow(flux_target_30m2, sink = s3$path("terrestrial_30min-targets.csv.gz"))
+
+#Write daily data
+
+s3 <- arrow::s3_bucket("neon4cast-targets/terrestrial_daily",
+                       endpoint_override = "data.ecoforecast.org",
+                       access_key = Sys.getenv("AWS_ACCESS_KEY"),
+                       secret_key = Sys.getenv("AWS_SECRET_ACCESS_KEY"))
+
+flux_target_daily |> 
+  arrange(variable, datetime) |> 
+  arrow::write_csv_arrow(sink = s3$path("terrestrial_daily-targets.csv.gz"))
+
+flux_target_daily2 <- flux_target_daily |>
+  mutate(datetime = lubridate::as_datetime(datetime),
+         duration = "P1D",
+         project_id = "neon4cast") |>
+  select(project_id, site_id, datetime, duration, variable, observation) |> 
+  arrange(variable, datetime) |> 
+  na.omit()
+
+s3 <- arrow::s3_bucket("bio230014-bucket01/challenges/targets/project_id=neon4cast/duration=P1D",
+                       endpoint_override = "sdsc.osn.xsede.org",
+                       access_key = Sys.getenv("OSN_KEY"),
+                       secret_key = Sys.getenv("OSN_SECRET"))
 
 
+arrow::write_csv_arrow(flux_target_daily2, sink = s3$path("terrestrial_daily-targets.csv.gz"))
+
+message(paste0("Completed Terrestrial Target at ", Sys.time()))

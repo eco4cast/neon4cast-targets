@@ -94,28 +94,36 @@ read.avro.wq <- function(sc, name = 'name', path, columns_keep, dir ) {
     dplyr::filter(termName %in% wq_vars) %>%
     # for streams want to omit the downstream measurement (102) and retain upstream (101)
     # rivers and lakes horizontal index is 103
-  dplyr::filter(horizontalIndex %in% c('101', '111', '103')) %>%
-  dplyr::select(siteName, termName, startDate, 
-           doubleValue, intValue) %>%
+    dplyr::filter(horizontalIndex %in% c('101', '111', '103')) %>%
+    dplyr::select(siteName, termName, startDate, 
+                  doubleValue, intValue) %>%
     dplyr::collect() |> 
     # combine the value fields to one
     dplyr::mutate(Value = ifelse(is.na(doubleValue), 
                           intValue, doubleValue)) %>%
     dplyr::select(any_of(columns_keep))
 
-  wq_tibble <- wq_avro %>%
-    as.data.frame() %>%
-    suppressWarnings()
-  
-  if (nrow(wq_tibble) >=1 & 'sensorDepth' %in% colnames(wq_tibble)) {
-    wq_tibble_wider <- wq_tibble %>%
+  if (nrow(wq_avro) != 0) {
+    wq_tibble <- wq_avro %>%
+      as.data.frame() %>%
+      suppressWarnings()  %>%
       arrange(startDate, termName) %>%
-      pivot_wider(names_from = termName, values_from = Value)  %>%
+      pivot_wider(names_from = termName, values_from = Value) |> 
+      filter_at(vars(ends_with('QF')), any_vars(. != 1)) # checks to see if any of the QF cols have a 1
+  } else {
+    wq_tibble <- data.frame()
+  }
+  
+  
+  if (nrow(wq_tibble) >=1 ) {
+    wq_tibble_wider <- wq_tibble %>%
+      # arrange(startDate, termName) %>%
+      # pivot_wider(names_from = termName, values_from = Value)  %>%
       dplyr::mutate(sensorDepth = ifelse(siteName %in% profiling_sites, 
                                          sensorDepth,
                                          0.5)) |> 
-      dplyr::filter(sensorDepth > 0 & sensorDepth < 1) |> 
-      filter_at(vars(ends_with('QF')), any_vars(. != 1)) # checks to see if any of the QF cols have a 1
+      dplyr::filter(sensorDepth > 0 & sensorDepth < 1)# |> 
+      # filter_at(vars(ends_with('QF')), any_vars(. != 1)) # checks to see if any of the QF cols have a 1
 
     # if the filtering has left rows then find the mean
     if (nrow(wq_tibble_wider) >= 1) {

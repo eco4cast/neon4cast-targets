@@ -41,7 +41,7 @@ cronR::cron_add(command = cmd, frequency = "0 10 * * SUN", id = 'beetles-targets
 cmd <- cronR::cron_rscript(rscript = file.path(home_dir, targets_repo,"terrestrial_targets.R"),
                            rscript_log = file.path(log_dir, "terrestrial-targets.log"),
                            log_append = FALSE,
-                           cmd = "/usr/local/bin/r", # use litter, more robust on CLI
+                           #cmd = "/usr/local/bin/r", # use litter, more robust on CLI
                            workdir = file.path(home_dir, targets_repo),
                            trailing_arg = "curl -fsS -m 10 --retry 5 -o /dev/null https://hc-ping.com/c1fb635f-95f8-4ba2-a348-98924548106c")
 cronR::cron_add(command = cmd, frequency = 'daily', at = "9AM", id = 'terrestrial-targets')
