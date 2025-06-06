@@ -817,4 +817,8 @@ arrow::write_csv_arrow(hourly_temp_profile_lakes2, sink = s3$path("supporting_da
 
 #arrow::write_csv_arrow(hourly_temp_profile_lakes2, sink = s3$path("aquatics-expanded-observations.csv.gz"))
 
+# sync the data back to the S3 cache
+mc_mirror("~/data", "efi/aquatics-targets")
+
+
 message(paste0("Completed Aquatics Target at ", Sys.time()))
