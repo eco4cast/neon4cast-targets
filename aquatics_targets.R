@@ -1,4 +1,30 @@
+library(neonstore)
+library(tidyverse)
+library(lubridate)
+library(contentid)
+library(sparklyr)
+library(sparkavro)
+library(minioclient)
+library(fs)
+
 message(paste0("Running Creating Aquatics Targets at ", Sys.time()))
+
+
+
+## install google cloud SDK
+if(!dir.exists("~/google-cloud-sdk")) {
+  download.file("https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-x86_64.tar.gz", "~/google-cloud-cli-linux-x86_64.tar.gz")
+  untar("~/google-cloud-cli-linux-x86_64.tar.gz")
+  system2("./google-cloud-sdk/install.sh")
+}
+
+install_mc()
+mc_alias_set("efi", "s3-west.nrp-nautilius.io", 
+             access_key = Sys.getenv("EFI_NRP_KEY"), 
+             secret_key = sys.getenv("EFI_NRP_SECRET"))
+mc_mirror("efi/gcs-creds/config/", "~/.config/")
+mc_mirror("efi/aquatics-targets",  "~/data")
+
 
 Sys.unsetenv("AWS_DEFAULT_REGION")
 Sys.unsetenv("AWS_S3_ENDPOINT")
@@ -7,24 +33,19 @@ Sys.setenv("AWS_EC2_METADATA_DISABLED"="TRUE")
 Sys.setenv(TZ = 'UTC')
 ## 02_generate_targets_aquatics
 ## Process the raw data into the target variable product
-library(neonstore)
-library(tidyverse)
-library(lubridate)
-library(contentid)
-library(sparklyr)
-library(sparkavro)
+
 source('R/avro_functions.R')
 source('R/data_processing.R')
 # spark_install(version = '3.0')
 
 `%!in%` <- Negate(`%in%`) # not in function
 
-avro_file_directory <- "/home/rstudio/data/aquatic_avro"
-parquet_file_directory <- "/home/rstudio/data/aquatic_parquet"
-EDI_file_directory <- "/home/rstudio/data/aquatic_EDI"
+avro_file_directory <- "~/data/aquatic_avro"
+parquet_file_directory <- "~/data/aquatic_parquet"
+EDI_file_directory <- "~/data/aquatic_EDI"
 
 readRenviron("~/.Renviron") # compatible with littler
-Sys.setenv("NEONSTORE_HOME" = "/home/rstudio/data/neonstore")
+Sys.setenv("NEONSTORE_HOME" = "~/data/neonstore")
 Sys.getenv("NEONSTORE_DB")
 
 #temporary aquatic repo during test of new workflow
